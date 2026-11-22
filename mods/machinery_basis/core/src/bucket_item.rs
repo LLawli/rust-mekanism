@@ -124,6 +124,68 @@ pub fn use_as_bucket(
     UseOutcome::Success
 }
 
+/// O que `tryClaimItem` e `canAccessOrDisplayError` responderam no começo de um uso do item (`ItemBlockFluidTank.java:82-87`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Claim {
+    /// O item não tinha dono e quem usa o tomou: o uso acaba em `SUCCESS`.
+    Claimed,
+    /// Quem usa não tem acesso: `FAIL`.
+    Refused,
+    /// O item já tem dono e quem usa tem acesso: o uso segue.
+    Owned,
+}
+
+/// O que `interactLivingEntity` pede a quem tem o jogo.
+pub trait LivingUse {
+    /// `tryClaimItem` e, sem posse nova, `canAccessOrDisplayError`. `keep` diz se a posse fica na pilha da mão.
+    fn claim(&mut self, keep: bool) -> Claim;
+    /// `fluidHandler.insert(MILK, BUCKET_VOLUME)` no handler `oneByOne` da mão, confirmado se algo entrou: o que entrou, ou `None` sem handler.
+    fn milk(&mut self) -> Option<i32>;
+}
+
+/// `ItemBlockFluidTank.interactLivingEntity` (`:76-109`). `mode` é o modo balde; `baby` e `milkable` (`getMilkSound` não nulo) são da entidade; `infinite` é
+/// `player.hasInfiniteMaterials()`: `Player.interactOn` entrega então uma cópia da pilha (`Player.java:875-877`), e a posse tomada nela se perde.
+/// Fora do modo balde ou com um filhote, `PASS`. O item sem dono só toma posse (`SUCCESS`), e quem não tem acesso falha. Depois, quem dá leite enche o item com
+/// um balde ou o que couber, e falha se nada coube; os outros passam.
+pub fn interact_living_entity(
+    mode: bool,
+    baby: bool,
+    milkable: bool,
+    infinite: bool,
+    user: &mut dyn LivingUse,
+) -> UseOutcome {
+    if !mode || baby {
+        return UseOutcome::Pass;
+    }
+    match user.claim(!infinite) {
+        Claim::Claimed => return UseOutcome::Success,
+        Claim::Refused => return UseOutcome::Fail,
+        Claim::Owned => {}
+    }
+    if !milkable {
+        return UseOutcome::Pass;
+    }
+    match user.milk() {
+        // "If there isn't a fluid handler then there is something wrong with the stack, treat it as a normal stack and skip".
+        None => UseOutcome::Pass,
+        // "Fail if we can't insert any, we allow partial bucket amounts for milking though".
+        Some(0) => UseOutcome::Fail,
+        Some(_) => UseOutcome::Success,
+    }
+}
+
+/// `Player.interactOn` (`Player.java:862-891`): o `interact` da entidade tem a vez primeiro, e se consome a ação o item nem é perguntado; senão o
+/// `interactLivingEntity` do item responde, e só o `SUCCESS` dele consome (`FAIL` e `PASS` viram `PASS`).
+pub fn interact_on(entity_consumed: bool, item: impl FnOnce() -> UseOutcome) -> UseOutcome {
+    if entity_consumed {
+        return UseOutcome::Success;
+    }
+    match item() {
+        UseOutcome::Success => UseOutcome::Success,
+        UseOutcome::Fail | UseOutcome::Pass => UseOutcome::Pass,
+    }
+}
+
 /// `FluidTankItemDispenseBehavior.execute` depois do handler (`ItemBlockFluidTank.java:240-249`): diante de uma fonte o item tira um
 /// balde dela, e diante de qualquer outra coisa (ar, fluido correndo, um bloco) ele tenta pôr um. `source` é
 /// `!fluidState.isEmpty() && fluidState.isSource()` da célula da frente. Quem chama confirma `transaction` se algo passou.

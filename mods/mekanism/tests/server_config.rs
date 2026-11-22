@@ -529,3 +529,66 @@ fn the_transporters_follow_the_order_of_the_tiers_and_the_file_changes_speed_and
     assert_eq!(transporter_pull_amounts(&loaded), [1, 3, 32, 64]);
     assert_eq!(transporter_speeds(&loaded), [1, 10, 20, 99]);
 }
+
+/// As quatro opções de `general.toml` que os tanques leem (`GeneralConfig.java:172-173`, `:177-180` e `:188-189`): o arquivo do original lê com os padrões, e
+/// cada chave trocada no arquivo chega à sua opção, sem correção.
+#[test]
+fn the_tank_options_follow_the_file() {
+    use mekanism_rules::{TankSettings, tank_settings};
+    let original = reference("general");
+    assert_eq!(
+        TankSettings::DEFAULT,
+        TankSettings {
+            dump_excess_keep_ratio: 0.85,
+            radiation_enabled: true,
+            prefilled_fluid_tanks: true,
+            prefilled_chemical_tanks: true,
+        }
+    );
+    assert_eq!(
+        tank_settings(&GENERAL_CONFIG.load(&original)),
+        TankSettings::DEFAULT
+    );
+    let swap = |from: &str, to: &str| {
+        assert_eq!(original.matches(from).count(), 1, "{from}");
+        let loaded = GENERAL_CONFIG.load(&original.replace(from, to));
+        assert!(!loaded.corrected, "{to}");
+        tank_settings(&loaded)
+    };
+    assert_eq!(
+        swap("dumpExcessKeepRatio = 0.85", "dumpExcessKeepRatio = 0.5"),
+        TankSettings {
+            dump_excess_keep_ratio: 0.5,
+            ..TankSettings::DEFAULT
+        }
+    );
+    assert_eq!(
+        swap("fluidTanks = true", "fluidTanks = false"),
+        TankSettings {
+            prefilled_fluid_tanks: false,
+            ..TankSettings::DEFAULT
+        }
+    );
+    assert_eq!(
+        swap("chemicalTanks = true", "chemicalTanks = false"),
+        TankSettings {
+            prefilled_chemical_tanks: false,
+            ..TankSettings::DEFAULT
+        }
+    );
+    assert_eq!(
+        swap(
+            "#Enable worldwide radiation effects.\n\tenabled = true",
+            "#Enable worldwide radiation effects.\n\tenabled = false"
+        ),
+        TankSettings {
+            radiation_enabled: false,
+            ..TankSettings::DEFAULT
+        }
+    );
+    // Fora da faixa (0,001 a 1) o NeoForge corrige a chave, e o arquivo é escrito de novo.
+    let wrong = GENERAL_CONFIG
+        .load(&original.replace("dumpExcessKeepRatio = 0.85", "dumpExcessKeepRatio = 1.5"));
+    assert!(wrong.corrected);
+    assert!((0.001..=1.0).contains(&tank_settings(&wrong).dump_excess_keep_ratio));
+}

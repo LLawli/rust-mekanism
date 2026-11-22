@@ -2363,6 +2363,13 @@ static SERVER_CONFIG: std::sync::RwLock<rules::ServerConfig> = std::sync::RwLock
 /// `nutritionalPasteMBPerFood` e `nutritionalPasteSaturation` de `general.toml`, lidos a cada uso como o original lê o `CachedIntValue`.
 static PASTE: std::sync::RwLock<rules::PasteSettings> = std::sync::RwLock::new(rules::PasteSettings::DEFAULT);
 
+/// `dumpExcessKeepRatio`, `radiationEnabled` e as duas opções de `prefilled` de `general.toml`, lidas a cada uso como o original lê os `CachedValue`.
+static TANK_SETTINGS: std::sync::RwLock<rules::TankSettings> = std::sync::RwLock::new(rules::TankSettings::DEFAULT);
+
+pub(in crate::game) fn tank_settings() -> rules::TankSettings {
+    *TANK_SETTINGS.read().unwrap_or_else(|error| error.into_inner())
+}
+
 /// `PasteBucketConsumption.onConsume`: o balde de pasta nutritiva bebido dá `BUCKET_VOLUME / nutritionalPasteMBPerFood` de fome e a saturação da
 /// configuração (`FoodData.eat`). O som de beber e o arroto são do `minecraft:food` do balde (nutrição 0), que o Horizon já toca como o
 /// `FoodProperties.onConsume` do original, que é no que a `PasteBucketConsumption` se baseia.
@@ -2401,6 +2408,33 @@ pub(in crate::game) fn register_configs(configs: &mut Vec<NativeConfig>) {
 /// `ModConfigEvent.Loading` e `Reloading`: o arquivo lido vira a configuração. Um valor errado vai para o limite ou para o padrão e o arquivo é escrito de
 /// novo, com as outras seções como estavam, como o `acceptConfig` do `ModConfigSpec` (`config.save()`); o Horizon avisa da mudança no segundo seguinte, e o texto
 /// novo já está certo.
+/// `ModConfigEvent.Loading` de `general.toml`, que para um arquivo de servidor é um mundo que abre: o cliente do original ganha registros novos
+/// (`ItemDisplayParameters.holders`) e monta as abas criativas de novo na primeira vez que a tela abre (`CreativeModeTabs.tryRebuildTabContents`), lendo então as
+/// opções de `prefilled`. O `Reloading` (o arquivo editado com o mundo aberto) não as monta de novo.
+pub(in crate::game) fn config_opened(config: &NativeConfigFile) {
+    if config.mod_id == "mekanism" && config.file == rules::GENERAL_CONFIG_FILE {
+        horizon_client::creative::mekanism_prefilled::world_opened();
+    }
+}
+
+thread_local! {
+    /// A marca de reentrada de [`creative_refresh`].
+    static IN_CREATIVE_REFRESH: Cell<bool> = const { Cell::new(false) };
+}
+
+/// O invólucro de `Game::refresh_creative_tabs` (`CreativeModeInventoryScreen.tryRefreshInvalidatedTabs`, no construtor da tela e no `containerTick`): a função
+/// roda por dentro, com a marca de reentrada, e depois dela as abas perdem os tanques cheios que `addFilledTanks` não poria (`MekanismCreativeTabs.java:51-69`).
+pub(in crate::game) fn creative_refresh(game: &mut Game<'_>) -> std::ops::ControlFlow<()> {
+    if IN_CREATIVE_REFRESH.get() {
+        return std::ops::ControlFlow::Continue(());
+    }
+    IN_CREATIVE_REFRESH.set(true);
+    game.refresh_creative_tabs();
+    IN_CREATIVE_REFRESH.set(false);
+    horizon_client::creative::mekanism_prefilled::refresh(&mut game.creative_screen);
+    std::ops::ControlFlow::Break(())
+}
+
 pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
     if config.mod_id != "mekanism" {
         return;
@@ -2417,6 +2451,9 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
             let loaded = basis::read_config(config, &rules::GENERAL_CONFIG, None);
             machinery_basis_core::settings::set_machine_settings(rules::machine_settings(&loaded));
             *PASTE.write().unwrap_or_else(|error| error.into_inner()) = rules::paste_settings(&loaded);
+            let tanks = rules::tank_settings(&loaded);
+            *TANK_SETTINGS.write().unwrap_or_else(|error| error.into_inner()) = tanks;
+            horizon_client::creative::mekanism_prefilled::configure(tanks.prefilled_fluid_tanks, tanks.prefilled_chemical_tanks);
         }
         rules::USAGE_CONFIG_FILE => {
             let loaded = basis::read_config(config, &rules::USAGE_CONFIG, None);
@@ -3465,7 +3502,7 @@ fn chemical_extra_lines(game: &Game<'_>, chemical: &str) -> Vec<horizon_client::
     let mut lines = Vec::new();
     if let Some(data) = data.get(chemical) {
         let tip = rules::AttributeTooltip {
-            radiation_enabled: rules::RADIATION_ENABLED,
+            radiation_enabled: tank_settings().radiation_enabled,
             decay_immune: resource::current_tags().contains(rules::DECAY_BLACKLIST_TAG, chemical),
             temperature_unit: basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE),
             compact_energy: basis::compact_energy_display(rules::LOCAL_CONFIG_NAMESPACE),
@@ -3516,9 +3553,38 @@ fn contents_tooltip(game: &Game<'_>, batch: &mut HudBatch, first: String, extra:
 }
 
 /// `Chemical.getAttributes` como a lib o pede: os atributos de cada químico, para o `ChemicalAttributeValidator` de um tanque.
+/// Os atributos de um químico, do mapa de agora e com a opção `radiationEnabled` de agora: o validador do original pergunta ao mapa de dados e à configuração
+/// a cada inserção, então um `/reload` ou o arquivo editado valem para um tanque que já existe.
 pub(in crate::game) fn chemical_attributes() -> machinery_basis_core::chemical::ChemicalAttributes {
-    let map = CHEMICAL_ATTRIBUTE_MAP.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
-    rules::chemical_attributes_of(map)
+    Rc::new(|chemical: &ChemicalResource| {
+        let map = CHEMICAL_ATTRIBUTE_MAP.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+        rules::chemical_attributes_of(map, Rc::new(|| tank_settings().radiation_enabled))(chemical)
+    })
+}
+
+/// Os arquivos de todos os pacotes da pasta dos mapas de dados dos químicos, o pacote de baixo primeiro e `values` na ordem do documento, como
+/// `DataMapLoader.readData` os lê (`listMatchingResourceStacks`). O gancho de recarga só entrega o arquivo do pacote de cima de cada id, já lido num `Value` que
+/// ordena as chaves; aqui os pacotes são lidos de novo, com a pilha de pacotes que o jogo usa para os ouvintes (`native_reload_listeners`). Um arquivo que não
+/// decodifica é pulado sozinho.
+fn data_map_stack(game: &Game<'_>, folder: &str) -> rules::DataMapStack {
+    let stack = crate::game::functions::pack_stack(&game.world_root, &game.options.resources, game.cmds.vanilla_disabled, &game.level.enabled_features);
+    let mut files: BTreeMap<String, Vec<machinery_basis_core::data_map::DataMapFile>> = BTreeMap::new();
+    for pack in stack.builtin.iter().chain(stack.enabled_packs()) {
+        for file in pack.list_folder(folder) {
+            let Some(id) = rules::data_file_id(&file, folder) else {
+                continue;
+            };
+            let parsed = pack
+                .read(&file)
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .and_then(|text| machinery_basis_core::data_map::DataMapFile::parse(&text));
+            match parsed {
+                Some(parsed) => files.entry(id).or_default().push(parsed),
+                None => eprintln!("mekanism: o mapa de dados {file} do pacote {} não decodifica", pack.id),
+            }
+        }
+    }
+    files.into_iter().collect()
 }
 
 /// As pastas do original. A lib não sabe delas: o mod lê os arquivos e entrega o resultado.
@@ -3530,7 +3596,7 @@ pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener
     listeners.push(NativeReloadListener::json(CHEMICAL_ATTRIBUTES_LISTENER, rules::CHEMICAL_ATTRIBUTE_FOLDER));
 }
 
-pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(String, serde_json::Value)]) {
+pub(in crate::game) fn reload_apply(game: &Game<'_>, listener: &NativeReloadListener, files: &[(String, serde_json::Value)]) {
     if listener.id == CHEMICALS_LISTENER {
         let chemicals = files.iter().filter_map(|(id, json)| {
             let chemical = rules::chemical_resource(id, json);
@@ -3553,10 +3619,14 @@ pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(S
     } else if listener.id == UPGRADE_TAGS_LISTENER {
         upgrade::set_tags_source(DATA_SOURCE, upgrade::UpgradeTags::load(files));
     } else if listener.id == CHEMICAL_ATTRIBUTES_LISTENER {
-        let map = rules::chemical_attribute_maps(files, rules::RADIATION_ENABLED);
+        let stack = data_map_stack(game, &listener.folder);
+        // `registry.getTagOrEmpty`: as tags de químico desta recarga (o ouvinte delas vem antes deste).
+        let tags = resource::current_tags();
+        let members = |tag: &str| tags.members(tag).map(str::to_owned).collect::<Vec<_>>();
+        let map = rules::chemical_attribute_maps(&stack, &members);
         eprintln!("mekanism: {} químicos com atributos", map.len());
         *CHEMICAL_ATTRIBUTE_MAP.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(map));
-        *CHEMICAL_ATTRIBUTE_DATA.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(rules::chemical_attribute_data(files)));
+        *CHEMICAL_ATTRIBUTE_DATA.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(rules::chemical_attribute_data(&stack, &members)));
     }
 }
 

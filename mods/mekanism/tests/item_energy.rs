@@ -16,6 +16,8 @@ mod mekanism_mek_data {
     include!("../native/mek_data_energy.rs");
 }
 
+// Daqui só as pilhas cheias de energia: a regra das opções `prefilled` é do teste `creative_tabs`.
+#[allow(dead_code)]
 #[path = "../native/creative_tabs_table.rs"]
 mod table;
 

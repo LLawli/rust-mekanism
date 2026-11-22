@@ -638,3 +638,87 @@ fn the_filled_tanks_come_in_the_order_the_original_client_shows() {
         }
     }
 }
+
+/// As opções `prefilled` de `general.toml` (`MekanismCreativeTabs.java:53` e `:63`): cada uma tira das abas só os tanques criativos cheios do seu tipo.
+#[test]
+fn the_prefilled_options_take_out_only_their_filled_tanks() {
+    use table::{CREATIVE_CHEMICAL_TANK, CREATIVE_FLUID_TANK, prefilled_kept};
+    for fluid in [false, true] {
+        for chemical in [false, true] {
+            // O tanque com o conteúdo segue a opção dele.
+            assert_eq!(
+                prefilled_kept(CREATIVE_FLUID_TANK, true, false, fluid, chemical),
+                fluid
+            );
+            assert_eq!(
+                prefilled_kept(CREATIVE_CHEMICAL_TANK, false, true, fluid, chemical),
+                chemical
+            );
+            // O tanque criativo vazio, os outros tiers e o resto ficam.
+            assert!(prefilled_kept(
+                CREATIVE_FLUID_TANK,
+                false,
+                false,
+                fluid,
+                chemical
+            ));
+            assert!(prefilled_kept(
+                CREATIVE_CHEMICAL_TANK,
+                false,
+                false,
+                fluid,
+                chemical
+            ));
+            assert!(prefilled_kept(
+                "mekanism:basic_fluid_tank",
+                true,
+                false,
+                fluid,
+                chemical
+            ));
+            assert!(prefilled_kept(
+                "mekanism:basic_chemical_tank",
+                false,
+                true,
+                fluid,
+                chemical
+            ));
+            assert!(prefilled_kept(
+                "mekanism:canteen",
+                true,
+                false,
+                fluid,
+                chemical
+            ));
+            // Um componente do outro tipo não conta.
+            assert!(prefilled_kept(
+                CREATIVE_FLUID_TANK,
+                false,
+                true,
+                fluid,
+                chemical
+            ));
+            assert!(prefilled_kept(
+                CREATIVE_CHEMICAL_TANK,
+                true,
+                false,
+                fluid,
+                chemical
+            ));
+        }
+    }
+}
+
+/// `CreativeModeTabs.tryRebuildTabContents`: as abas são montadas de novo (e as opções lidas) na primeira vez, num mundo novo e quando a permissão muda.
+#[test]
+fn the_tabs_are_built_again_for_a_new_world_or_a_new_permission() {
+    use table::prefilled_needs_update;
+    assert!(prefilled_needs_update(false, None, false));
+    assert!(prefilled_needs_update(false, None, true));
+    assert!(!prefilled_needs_update(false, Some(false), false));
+    assert!(!prefilled_needs_update(false, Some(true), true));
+    assert!(prefilled_needs_update(false, Some(false), true));
+    assert!(prefilled_needs_update(false, Some(true), false));
+    assert!(prefilled_needs_update(true, Some(false), false));
+    assert!(prefilled_needs_update(true, Some(true), true));
+}

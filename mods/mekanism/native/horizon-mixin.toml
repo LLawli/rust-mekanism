@@ -484,6 +484,10 @@ bindings = [
   { name = "listeners", ty = "&mut Vec<crate::game::NativeReloadListener>", value = "&mut *listeners" },
 ]
 
+# Os mapas de dados `chemical_attribute_*` como o `DataMapLoader` do NeoForge os lê: os arquivos de todos os pacotes de cada id (o gancho só entrega o do pacote
+# de cima) e as chaves de `values` na ordem do documento (o `Value` do gancho as ordena pelo nome), que decide entre uma tag e um id. Para essa pasta o helper
+# lê os pacotes de novo, com a pilha de pacotes do jogo (`functions::pack_stack`, `Game::world_root`, `options`, `cmds` e `level`, privados): hook do catálogo
+# usado com estrutura privada, H286.
 [[injection]]
 id = "reload-apply"
 hook = "server_reload_listener_apply"
@@ -491,6 +495,7 @@ hook_version = 1
 kind = "HEAD"
 helper = "reload_apply.rs"
 bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "listener", ty = "&crate::game::NativeReloadListener", value = "listener" },
   { name = "files", ty = "&[(String, serde_json::Value)]", value = "files" },
 ]
@@ -620,6 +625,27 @@ bindings = [
   { name = "result", ty = "Result<()>", value = "$value" },
 ]
 
+# As opções `prefilled.fluidTanks` e `prefilled.chemicalTanks` de `general.toml` (`MekanismCreativeTabs.addFilledTanks`, `:51-69`): o Horizon monta as abas do
+# `creative-inventory.json` antes de qualquer mundo, e o original lê as opções quando a tela criativa monta as abas (mundo novo ou permissão nova). O módulo
+# vai para `creative.rs`, onde estão `Creative::rebuild` e as listas privadas da aba de busca, e o HEAD cancelável de `Game::refresh_creative_tabs` (o
+# `tryRefreshInvalidatedTabs` do construtor e do `containerTick`) roda a função por dentro, com marca de reentrada, e filtra depois. Alvo cru, H285.
+[[module]]
+id = "creative-prefilled"
+file = "crates/horizon-client/src/creative.rs"
+name = "mekanism_prefilled"
+source = "creative_prefilled.rs"
+visibility = "pub"
+
+[[injection]]
+id = "creative_refresh"
+target = "horizon_client::game::Game<'_>::refresh_creative_tabs"
+kind = "HEAD"
+cancellable = true
+helper = "creative_refresh.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
 # `BlockOre.getExpDrop` da fluorita (1 a 4, `OreType.FLUORITE`): o Horizon só sorteia experiência de minério pelo nome do vanilla (`Game::block_experience`, que
 # devolve 0 para um bloco de mod), então o RETURN dele troca o 0 pelo sorteio da fluorita. O gerador do nível está emprestado dentro do corpo
 # (o `return` do spawner), então o sorteio é o `Math.random()` do Java. Alvo cru, H42.
@@ -688,21 +714,38 @@ bindings = [
   { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
 ]
 
-# O item do Fluid Tank no modo balde (`ItemBlockFluidTank`): a ordenha (`interactLivingEntity`) e o dispensador (`FluidTankItemDispenseBehavior`). Hooks do catálogo usados
-# com estrutura privada do jogo (`mekanism_tank`: `game.mobs`, `world.block_entities`). O clique no mundo entra pelos `use_item_on`, `use_item` e `use_hand` acima e abaixo.
+# O item do Fluid Tank no modo balde (`ItemBlockFluidTank`): a ordenha (`interactLivingEntity`) e o dispensador (`FluidTankItemDispenseBehavior`). O clique no mundo
+# entra pelos `use_item_on`, `use_item` e `use_hand` acima e abaixo.
+#
+# A ordenha não cabe no hook `interact_entity` do catálogo, que roda onde `Player.interactOn` começa, antes do `interact` da entidade: no original a entidade tem a
+# vez primeiro (o lobo manso senta, o aldeão abre a troca) e só o que ela passa chega ao `interactLivingEntity` do item (`Player.java:862-889`; rastro
+# `tank_fluid_item_entity`, passo `wolf_takes_the_click`). O HEAD cancelável de `Game::interact_entity` roda a função por dentro, com marca de reentrada, e o item
+# age depois dela. No cliente de um convidado, o HEAD cancelável de `remote_use_entity` manda o `Interact` pela função de dentro e prevê o resultado do item: a
+# mão balança e o `UseItem` não sai. Alvos crus (lê `game.mobs`), H287.
 [[injection]]
-id = "interact_entity"
-hook = "interact_entity"
-hook_version = 1
+id = "tank_interact_entity"
+target = "horizon_client::game::Game<'_>::interact_entity"
 kind = "HEAD"
-helper = "interact_entity.rs"
+cancellable = true
+helper = "tank_interact_entity.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
-  { name = "entity", ty = "i32", value = "entity" },
-  { name = "stack", ty = "Option<&horizon_client::items::ItemStack>", value = "stack" },
-  { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
+  { name = "target", ty = "Option<InteractTarget>", value = "target" },
 ]
 
+[[injection]]
+id = "tank_use_entity"
+target = "horizon_client::game::remote::Game<'_>::remote_use_entity"
+kind = "HEAD"
+cancellable = true
+helper = "tank_use_entity.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "hand", ty = "Hand", value = "hand" },
+]
+
+# O dispensador com o item do Fluid Tank no modo balde (`FluidTankItemDispenseBehavior`). Hook do catálogo usado com estrutura privada do jogo (`mekanism_tank`:
+# `world.block_entities`).
 [[injection]]
 id = "dispense_item"
 hook = "dispense_item"

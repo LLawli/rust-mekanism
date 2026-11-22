@@ -17,6 +17,7 @@ pub mod composter;
 pub mod config_window;
 pub mod container_sync;
 pub mod containers;
+pub mod data_map;
 pub mod debug_mode;
 pub mod distribution;
 pub mod ejector;

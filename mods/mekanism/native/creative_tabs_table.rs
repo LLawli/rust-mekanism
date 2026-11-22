@@ -685,8 +685,8 @@ pub fn filled_chemical_tank(chemical: &str) -> String {
     )
 }
 
-/// `addFilledTanks(parameters, output, chemical)`: os de fluido e, com `chemical`, os de químico depois. As duas opções do `general.toml` (`prefilledFluidTanks` e
-/// `prefilledChemicalTanks`) valem o padrão, ligadas: a aba é montada antes de o servidor ler os arquivos.
+/// `addFilledTanks(parameters, output, chemical)`: os de fluido e, com `chemical`, os de químico depois. A lista traz todos: as duas opções do `general.toml`
+/// (`prefilledFluidTanks` e `prefilledChemicalTanks`) tiram os seus quando a tela criativa monta as abas ([`prefilled_kept`], o módulo `mekanism_prefilled`).
 pub fn filled_tanks(chemical: bool) -> Vec<String> {
     let mut stacks: Vec<String> = FILLED_TANK_FLUIDS
         .iter()
@@ -700,6 +700,32 @@ pub fn filled_tanks(chemical: bool) -> Vec<String> {
         );
     }
     stacks
+}
+
+/// As opções `prefilled.fluidTanks` e `prefilled.chemicalTanks` (`MekanismCreativeTabs.java:53` e `:63`) sobre uma pilha das abas: o tanque criativo que traz
+/// `mekanism:fluids` (ou `mekanism:chemicals`) só fica com a opção dele ligada; o tanque vazio e todo o resto ficam sempre.
+pub fn prefilled_kept(
+    item: &str,
+    has_fluids: bool,
+    has_chemicals: bool,
+    fluid: bool,
+    chemical: bool,
+) -> bool {
+    match item {
+        CREATIVE_FLUID_TANK if has_fluids => fluid,
+        CREATIVE_CHEMICAL_TANK if has_chemicals => chemical,
+        _ => true,
+    }
+}
+
+/// `CreativeModeTabs.tryRebuildTabContents`: a tela criativa monta as abas de novo, lendo as opções de agora, quando o mundo é outro (os `holders` mudam) ou a
+/// permissão (`hasPermissions`) muda; `built_with` é a permissão da última montagem (`None` antes da primeira). O arquivo editado com o mundo aberto não basta.
+pub fn prefilled_needs_update(
+    world_opened: bool,
+    built_with: Option<bool>,
+    permissions: bool,
+) -> bool {
+    world_opened || built_with != Some(permissions)
 }
 
 /// A aba do vanilla que ganha os tanques de fluido cheios, depois dos baldes (`MekanismCreativeTabs.java:137`).

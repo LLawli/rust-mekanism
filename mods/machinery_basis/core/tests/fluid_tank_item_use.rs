@@ -1,8 +1,9 @@
 //! O item do Fluid Tank usado como balde no mundo, contra o rastro do original (`tank_fluid_item_use.jsonl`, de `TankTraceTest.fluidItemUse`): 19 usos de
 //! `ItemBlockFluidTank.use`, cada um com o resultado, a mão, o que foi para o inventário e o bloco do alvo depois.
 use machinery_basis_core::bucket_item::{
-    BUCKET_VOLUME, CauldronHandler, CauldronLevel, CauldronOutcome, FluidWorld, UseHit, UseOutcome,
-    cauldron_interact, dispense_as_bucket, use_as_bucket,
+    BUCKET_VOLUME, CauldronHandler, CauldronLevel, CauldronOutcome, Claim, FluidWorld, LivingUse,
+    UseHit, UseOutcome, cauldron_interact, dispense_as_bucket, interact_living_entity, interact_on,
+    use_as_bucket,
 };
 use machinery_basis_core::component_container::{
     AttachedCodec, ComponentBackedHandler, ComponentTankSpec, ComponentTankSpecOf,
@@ -10,6 +11,7 @@ use machinery_basis_core::component_container::{
 use machinery_basis_core::components::Components;
 use machinery_basis_core::containers::ItemResource;
 use machinery_basis_core::fluid::FluidResource;
+use machinery_basis_core::item_access::ItemResourceHandler;
 use machinery_basis_core::item_access::{HandAccess, ItemAccess, OneByOne};
 use machinery_basis_core::resource_tank::StackContents;
 use machinery_basis_core::transaction::Transaction;
@@ -142,6 +144,10 @@ impl FluidWorld for Scene {
     fn place(&mut self, resource: &FluidResource, pos: [i32; 3], _validate_placed: bool) -> bool {
         // O chão não é ar nem substituível; o ar e um líquido são (`destBlockState.canBeReplaced(fluid)`), e o fluido novo toma o lugar.
         if pos != TARGET {
+            return false;
+        }
+        // O leite do NeoForge não tem bloco (`FluidType.canBePlacedInLevel` falso): não vai ao mundo.
+        if &*resource.id == "minecraft:milk" {
             return false;
         }
         self.target = Some(resource.clone());
@@ -687,4 +693,233 @@ fn the_dispenser_picks_a_source_up_and_places_otherwise() {
         dispense("ftank:basic:water:0:2", Some(water()), true),
         (Some(water()), 0, 1, 1, None)
     );
+}
+
+/// Quem usa o item numa entidade, na cena do rastro `tank_fluid_item_entity`: o dono da pilha da mão e a mão.
+struct EntityUser<'a> {
+    hand: &'a HandAccess,
+    /// `""`, `"me"` ou `"other"` (outro jogador, com o modo privado).
+    owner: &'a Cell<&'static str>,
+}
+
+impl LivingUse for EntityUser<'_> {
+    fn claim(&mut self, keep: bool) -> Claim {
+        match self.owner.get() {
+            "" => {
+                if keep {
+                    self.owner.set("me");
+                }
+                Claim::Claimed
+            }
+            "me" => Claim::Owned,
+            _ => Claim::Refused,
+        }
+    }
+
+    fn milk(&mut self) -> Option<i32> {
+        let codec: Rc<dyn AttachedCodec<FluidResource>> = Rc::new(TankItems);
+        let one = OneByOne(self.hand);
+        let handler =
+            ComponentBackedHandler::new(&one, codec, spec_of(None), Rc::new(Cell::new(1))).manual();
+        let transaction = Transaction::open_safe();
+        let inserted = handler.insert(
+            &FluidResource::new("minecraft:milk"),
+            BUCKET_VOLUME,
+            &transaction,
+        );
+        if inserted > 0 {
+            transaction.commit();
+        }
+        Some(inserted)
+    }
+}
+
+/// O item usado numa entidade (`Player.interactOn` e `ItemBlockFluidTank.interactLivingEntity`), contra o rastro `tank_fluid_item_entity.jsonl`
+/// (`TankEntityUseTraceTest`): 20 passos de dois usos seguidos, com o resultado de cada um, a mão, o dono e o inventário.
+#[test]
+fn the_item_used_on_an_entity_follows_the_original() {
+    let lines = read("tank_fluid_item_entity.jsonl");
+    let mut steps = 0;
+    for line in lines[1..].iter().filter(|line| line.get("step").is_some()) {
+        let at = line["step"].as_str().unwrap();
+        let entity = line["entity"].as_str().unwrap();
+        let (item, count) = stack_of(&format!("ftank:{}", line["stack"].as_str().unwrap()));
+        let mode = line["mode"].as_bool().unwrap();
+        let creative = line["creative"].as_bool().unwrap();
+        let owner = Cell::new(match line["owner"].as_str().unwrap() {
+            "" => "",
+            "me" => "me",
+            _ => "other",
+        });
+        let held = item.clone();
+        let hand = HandAccess::new(
+            Some(item),
+            count,
+            creative,
+            Rc::new(move |resource| *resource == held),
+        );
+        // O lobo manso senta e levanta: o `interact` dele consome a ação, e o item nem é perguntado.
+        let entity_consumed = entity == "wolf";
+        let milkable = matches!(entity, "cow" | "mooshroom" | "goat" | "screaming_goat");
+        let baby = entity == "baby_cow";
+        let used = || {
+            let outcome = interact_on(entity_consumed, || {
+                interact_living_entity(
+                    mode,
+                    baby,
+                    milkable,
+                    creative,
+                    &mut EntityUser {
+                        hand: &hand,
+                        owner: &owner,
+                    },
+                )
+            });
+            let state = hand.state();
+            let mut stack = stack_json(state.resource.as_ref().unwrap(), state.count);
+            stack.as_array_mut().unwrap().push(json!(owner.get()));
+            (outcome, stack)
+        };
+        let name = |outcome: UseOutcome, recorded: &Value| {
+            let recorded = recorded.as_str().unwrap();
+            match outcome {
+                // `InteractionResult.SUCCESS`: a mão balança pela previsão do cliente (`SwingSource.PREDICTED`).
+                UseOutcome::Success => assert!(
+                    recorded.starts_with("success:predicted"),
+                    "{at}: {recorded}"
+                ),
+                UseOutcome::Pass => assert_eq!(recorded, "pass", "{at}"),
+                UseOutcome::Fail => panic!("{at}: `Player.interactOn` não devolve FAIL"),
+            }
+        };
+        let (first, hand1) = used();
+        name(first, &line["first"]);
+        assert_eq!(line["hand1"], hand1, "{at}: a mão depois do primeiro uso");
+        let (second, hand2) = used();
+        name(second, &line["second"]);
+        assert_eq!(line["hand2"], hand2, "{at}: a mão depois do segundo uso");
+        let inventory: Vec<Value> = line["inventory"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| Value::Array(entry.as_array().unwrap()[1..5].to_vec()))
+            .collect();
+        let extra: Vec<Value> = hand
+            .state()
+            .extra
+            .iter()
+            .map(|(item, count)| stack_json(item, *count))
+            .collect();
+        assert_eq!(inventory, extra, "{at}: o inventário");
+        // `Stats.ITEM_USED` não cresce: `interactLivingEntity` não conta o uso.
+        assert_eq!(line["used"], 0, "{at}");
+        steps += 1;
+    }
+    assert_eq!(steps, 20);
+}
+
+/// O que o servidor conta (`ServerPlayerGameMode.useItemOn` e `useItem`, as linhas `server` do rastro `tank_fluid_item_entity`): o caldeirão conta
+/// `ITEM_USED` e `FILL_CAULDRON` ou `USE_CAULDRON` (`ItemBlockFluidTank.java:344-345`), só quando algo passou; o `use` no mundo não conta nada, e o leite não é posto.
+#[test]
+fn the_server_counts_only_the_cauldron_uses() {
+    let lines = read("tank_fluid_item_entity.jsonl");
+    let mut steps = 0;
+    for line in lines[1..]
+        .iter()
+        .filter(|line| line.get("server").is_some())
+    {
+        let at = line["server"].as_str().unwrap();
+        let (item, count) = stack_of(&format!("ftank:{}", line["stack"].as_str().unwrap()));
+        let creative = line["creative"].as_bool().unwrap();
+        let block = line["block"].as_str().unwrap();
+        let held = item.clone();
+        if at.starts_with("cauldron") {
+            // `ItemAccessUtils.playerHandAccess(player, hand, true)`: sem efeito na mão do jogador criativo.
+            let hand = HandAccess::new(
+                Some(item),
+                count,
+                creative,
+                Rc::new(move |resource| *resource == held),
+            );
+            let cauldron = match block {
+                "cauldron" => cauldron(None, 0),
+                "water_cauldron" => cauldron(Some(water()), 3),
+                _ => cauldron(Some(lava()), 1),
+            };
+            let outcome = with_handler(&hand, |handler| {
+                let transaction = Transaction::open_safe();
+                let outcome = cauldron_interact(Some(handler), &cauldron, &transaction);
+                if outcome != CauldronOutcome::TryWithEmptyHand {
+                    transaction.commit();
+                }
+                outcome
+            });
+            let counted = match outcome {
+                CauldronOutcome::Success {
+                    filled_cauldron: true,
+                    ..
+                } => json!([1, 1, 0]),
+                CauldronOutcome::Success {
+                    filled_cauldron: false,
+                    ..
+                } => json!([1, 0, 1]),
+                CauldronOutcome::TryWithEmptyHand => json!([0, 0, 0]),
+            };
+            assert_eq!(line["counted"], counted, "{at}");
+            assert_eq!(
+                line["result"].as_str().unwrap().starts_with("success"),
+                counted != json!([0, 0, 0]),
+                "{at}"
+            );
+            let after = cauldron.state();
+            let expected = match after.fluid.as_ref().map(|fluid| &*fluid.id) {
+                None => "minecraft:cauldron".to_owned(),
+                Some("minecraft:water") => {
+                    format!("minecraft:water_cauldron[level={}]", after.level)
+                }
+                Some(_) => "minecraft:lava_cauldron".to_owned(),
+            };
+            assert_eq!(line["after"], expected, "{at}: o caldeirão depois");
+        } else {
+            let hand = HandAccess::new(
+                Some(item),
+                count,
+                creative,
+                Rc::new(move |resource| *resource == held),
+            );
+            let mut scene = Scene {
+                target: match block {
+                    "air" => None,
+                    fluid => Some(FluidResource::new(&format!("minecraft:{fluid}"))),
+                },
+                sounds: Vec::new(),
+            };
+            let outcome = use_item(
+                &hand,
+                &mut scene,
+                line["sneak"].as_bool().unwrap(),
+                None,
+                true,
+            );
+            let recorded = line["result"].as_str().unwrap();
+            match outcome {
+                UseOutcome::Success => assert!(recorded.starts_with("success"), "{at}: {recorded}"),
+                UseOutcome::Fail => assert_eq!(recorded, "fail", "{at}"),
+                UseOutcome::Pass => assert_eq!(recorded, "pass", "{at}"),
+            }
+            assert_eq!(
+                line["counted"],
+                json!([0, 0, 0]),
+                "{at}: o `use` não conta nada"
+            );
+            let state = hand.state();
+            assert_eq!(
+                Value::Array(line["hand"].as_array().unwrap()[..4].to_vec()),
+                stack_json(state.resource.as_ref().unwrap(), state.count),
+                "{at}: a mão"
+            );
+        }
+        steps += 1;
+    }
+    assert_eq!(steps, 11);
 }

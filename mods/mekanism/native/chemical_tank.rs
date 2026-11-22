@@ -260,7 +260,7 @@ fn tile_of(entity: &ModBlockEntity, tier: usize, facing: Face) -> (ChemicalTankT
         capacity,
         rate,
         creative: tier == rules::TANK_CREATIVE,
-        dump_excess_keep_ratio: rules::DUMP_EXCESS_KEEP_RATIO,
+        dump_excess_keep_ratio: glue::tank_settings().dump_excess_keep_ratio,
         attributes: glue::chemical_attributes(),
         items: items(),
     });
@@ -614,6 +614,8 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     if let Some(powered) = basis::take_power(game, pos) {
         live.tile.tile_mut().update_power(powered);
     }
+    // `MekanismConfig.general.dumpExcessKeepRatio.get()` a cada descarte (`ChemicalUtils.java:95`): o arquivo editado vale para o tanque que já existe.
+    live.tile.set_dump_excess_keep_ratio(glue::tank_settings().dump_excess_keep_ratio);
     live.tile.set_facing(basis::front(game, pos));
     let side_in_nbt = basis::read_side_nbt(entity);
     if side_in_nbt != live.side_nbt {

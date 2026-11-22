@@ -174,3 +174,127 @@ fn the_name_colour_and_the_description_match_the_original() {
         );
     }
 }
+
+/// O leite do NeoForge, que o Mekanism liga (`NeoForgeMod.enableMilkFluid`): o balde de leite do vanilla é o recipiente dele (`BucketResourceHandler.java:30-31`), o
+/// nome é o do tipo de fluido, e as texturas são as do NeoForge, com os tempos de quadro de lá (`milk_still.png.mcmeta`, 3, e `milk_flowing.png.mcmeta`, 2).
+#[test]
+fn the_milk_of_neoforge_is_a_fluid_with_the_milk_bucket_and_its_own_textures() {
+    use mekanism_rules::{
+        MILK, MILK_BUCKET, contents_fluid, flowing_sprite, fluid_lang_key, vanilla_bucket_fluid,
+        vanilla_bucket_sound, vanilla_fluid_bucket,
+    };
+    assert_eq!(MILK, "minecraft:milk");
+    assert_eq!(vanilla_bucket_fluid(MILK_BUCKET), Some(MILK));
+    assert_eq!(vanilla_fluid_bucket(MILK), Some("minecraft:milk_bucket"));
+    assert_eq!(
+        vanilla_bucket_fluid("minecraft:water_bucket"),
+        Some("minecraft:water")
+    );
+    assert_eq!(
+        vanilla_bucket_fluid("minecraft:lava_bucket"),
+        Some("minecraft:lava")
+    );
+    assert_eq!(
+        vanilla_fluid_bucket("minecraft:water"),
+        Some("minecraft:water_bucket")
+    );
+    assert_eq!(
+        vanilla_fluid_bucket("minecraft:lava"),
+        Some("minecraft:lava_bucket")
+    );
+    // O balde vazio, o de neve em pó e os dos fluidos de mod não são daqui.
+    for other in [
+        "minecraft:bucket",
+        "minecraft:powder_snow_bucket",
+        "mekanism:brine_bucket",
+    ] {
+        assert_eq!(vanilla_bucket_fluid(other), None, "{other}");
+    }
+    assert_eq!(vanilla_fluid_bucket("mekanism:brine"), None);
+    // Sem tinta e sem luz, e sem depender do arquivo de fluido do mod (o leite não tem bloco).
+    let look = contents_fluid(MILK, None).unwrap();
+    assert_eq!(look.sprite, "mekanism:block/milk_still");
+    assert_eq!(
+        (look.rgb, look.light, look.lighter_than_air),
+        (0xFF_FF_FF, 0, false)
+    );
+    assert_eq!(flowing_sprite(&look.sprite), "mekanism:block/milk_flowing");
+    assert_eq!(
+        flowing_sprite("minecraft:block/water_still"),
+        "minecraft:block/water_flow"
+    );
+    assert_eq!(
+        flowing_sprite("mekanism:mek_liquid/brine"),
+        "mekanism:mek_liquid/brine_flow"
+    );
+    // Um fluido desconhecido segue sem desenho.
+    assert_eq!(contents_fluid("minecraft:honey", None), None);
+    // Os sons do balde: os do leite têm as amostras dos da água.
+    assert_eq!(
+        vanilla_bucket_sound(MILK, true),
+        Some("minecraft:item.bucket.fill")
+    );
+    assert_eq!(
+        vanilla_bucket_sound(MILK, false),
+        Some("minecraft:item.bucket.empty")
+    );
+    assert_eq!(
+        vanilla_bucket_sound("minecraft:lava", true),
+        Some("minecraft:item.bucket.fill_lava")
+    );
+    assert_eq!(
+        vanilla_bucket_sound("minecraft:lava", false),
+        Some("minecraft:item.bucket.empty_lava")
+    );
+    assert_eq!(
+        vanilla_bucket_sound("minecraft:water", true),
+        Some("minecraft:item.bucket.fill")
+    );
+    assert_eq!(vanilla_bucket_sound("mekanism:brine", true), None);
+    // O nome (`FluidType.getDescriptionId`) e a tradução do NeoForge.
+    assert_eq!(fluid_lang_key(MILK), "fluid_type.minecraft.milk");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let lang: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("content/assets/mekanism/lang/en_us.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(lang["fluid_type.minecraft.milk"], "Milk");
+    // As texturas e os tempos de quadro: 32 quadros de 16x16 e de 32x32.
+    let textures = root.join("content/assets/mekanism/textures/block");
+    for (name, frametime, bytes) in [("milk_still", 3, 1406), ("milk_flowing", 2, 3960)] {
+        let png = std::fs::read(textures.join(format!("{name}.png"))).unwrap();
+        assert_eq!(&png[1..4], b"PNG", "{name}");
+        assert_eq!(png.len(), bytes, "{name}: o arquivo do NeoForge 26.3.0.100");
+        let meta: Value = serde_json::from_str(
+            &std::fs::read_to_string(textures.join(format!("{name}.png.mcmeta"))).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(meta["animation"]["frametime"], frametime, "{name}");
+    }
+}
+
+/// `ItemBlockFluidTank.getMilkSound` (`:112-121`).
+#[test]
+fn each_milked_animal_has_its_sound() {
+    use mekanism_rules::{Milked, milk_sound};
+    assert_eq!(
+        milk_sound(Milked::Cow, false),
+        Some("minecraft:entity.cow.milk")
+    );
+    assert_eq!(
+        milk_sound(Milked::Cow, true),
+        Some("minecraft:entity.cow.milk")
+    );
+    assert_eq!(
+        milk_sound(Milked::Mooshroom, false),
+        Some("minecraft:entity.mooshroom.milk")
+    );
+    assert_eq!(
+        milk_sound(Milked::Goat, false),
+        Some("minecraft:entity.goat.milk")
+    );
+    assert_eq!(
+        milk_sound(Milked::Goat, true),
+        Some("minecraft:entity.goat.screaming.milk")
+    );
+}

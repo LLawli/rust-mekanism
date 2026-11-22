@@ -11,6 +11,7 @@ use machinery_basis_core::client_config::{
 use machinery_basis_core::components::Components;
 use machinery_basis_core::container_sync::{Mirror, StackValue, Tracked};
 use machinery_basis_core::containers::{Access, AutomationType, InventorySlot, ItemResource};
+use machinery_basis_core::data_map::DataMapFile;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::energy_cube::{self, EnergyCubeConfig, ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::gui::NineSlice;
@@ -411,6 +412,47 @@ pub const GENERAL_CONFIG: ClientSpec = ClientSpec {
                 },
             ],
         },
+        // `GeneralConfig.java:167-174`: da seção `auto_eject`, só `dumpExcessKeepRatio` (as taxas `fluid` e `chemical` entram com as máquinas que ejetam).
+        ClientSection {
+            name: "auto_eject",
+            comment: "Settings for configuring Auto Eject from block entities",
+            entries: &[ClientEntry {
+                key: "dumpExcessKeepRatio",
+                comment: "The percentage of a tank's capacity to leave contents in when set to dumping excess.",
+                setting: ClientSetting::Float {
+                    default: 0.85,
+                    min: 0.001,
+                    max: 1.0,
+                },
+            }],
+        },
+        // `GeneralConfig.java:176-181`: a seção `prefilled`.
+        ClientSection {
+            name: "prefilled",
+            comment: "Settings for configuring Prefilled Tanks",
+            entries: &[
+                ClientEntry {
+                    key: "fluidTanks",
+                    comment: "Add filled variants of creative fluid tanks to creative/recipe viewers for all registered fluids.",
+                    setting: ClientSetting::Bool { default: true },
+                },
+                ClientEntry {
+                    key: "chemicalTanks",
+                    comment: "Add filled variants of creative chemical tanks to creative/recipe viewers for all registered chemicals. Note: This includes radioactive ones that normally can't be stored in chemical tanks.",
+                    setting: ClientSetting::Bool { default: true },
+                },
+            ],
+        },
+        // `GeneralConfig.java:187-189`: da seção `radiation`, só `enabled` (o resto entra com a radiação).
+        ClientSection {
+            name: "radiation",
+            comment: "Settings for configuring Radiation",
+            entries: &[ClientEntry {
+                key: "enabled",
+                comment: "Enable worldwide radiation effects.",
+                setting: ClientSetting::Bool { default: true },
+            }],
+        },
         // `GeneralConfig.java:262-267`: a seção `nutritional_paste` (`MekanismConfigTranslations.GENERAL_PASTE`), depois da `security`, que o port ainda não tem.
         ClientSection {
             name: "nutritional_paste",
@@ -469,6 +511,45 @@ pub fn paste_settings(loaded: &ClientLoaded) -> PasteSettings {
         saturation: loaded
             .float(&GENERAL_CONFIG, "nutritional_paste", "saturation")
             .map_or(PasteSettings::DEFAULT.saturation, |v| v as f32),
+    }
+}
+
+/// O que os tanques leem de `general.toml`. No original cada valor é lido na hora do uso (`CachedValue.get`): `dumpExcessKeepRatio` a cada descarte
+/// (`ChemicalUtils.java:95`), `radiationEnabled` a cada pergunta de `ChemicalRadioactivity.needsValidation` (`RadiationManager.java:60`), e as duas de `prefilled`
+/// quando a aba criativa é montada (`MekanismCreativeTabs.java:53` e `:63`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TankSettings {
+    pub dump_excess_keep_ratio: f64,
+    pub radiation_enabled: bool,
+    pub prefilled_fluid_tanks: bool,
+    pub prefilled_chemical_tanks: bool,
+}
+
+impl TankSettings {
+    pub const DEFAULT: Self = Self {
+        dump_excess_keep_ratio: DUMP_EXCESS_KEEP_RATIO,
+        radiation_enabled: RADIATION_ENABLED,
+        prefilled_fluid_tanks: true,
+        prefilled_chemical_tanks: true,
+    };
+}
+
+/// `dumpExcessKeepRatio`, `radiationEnabled`, `prefilledFluidTanks` e `prefilledChemicalTanks` de um arquivo lido.
+pub fn tank_settings(loaded: &ClientLoaded) -> TankSettings {
+    let defaults = TankSettings::DEFAULT;
+    TankSettings {
+        dump_excess_keep_ratio: loaded
+            .float(&GENERAL_CONFIG, "auto_eject", "dumpExcessKeepRatio")
+            .unwrap_or(defaults.dump_excess_keep_ratio),
+        radiation_enabled: loaded
+            .bool(&GENERAL_CONFIG, "radiation", "enabled")
+            .unwrap_or(defaults.radiation_enabled),
+        prefilled_fluid_tanks: loaded
+            .bool(&GENERAL_CONFIG, "prefilled", "fluidTanks")
+            .unwrap_or(defaults.prefilled_fluid_tanks),
+        prefilled_chemical_tanks: loaded
+            .bool(&GENERAL_CONFIG, "prefilled", "chemicalTanks")
+            .unwrap_or(defaults.prefilled_chemical_tanks),
     }
 }
 
@@ -2079,9 +2160,10 @@ pub const EDIT_MODE_COMPONENT: &str = "mekanism:edit_mode";
 pub const BUCKET_MODE_COMPONENT: &str = "mekanism:bucket_mode";
 /// `MekanismDataComponents.DUMP_MODE`.
 pub const DUMP_MODE_COMPONENT: &str = "mekanism:dump_mode";
-/// `MekanismConfig.general.dumpExcessKeepRatio` (`GeneralConfig.java:173`), o padrão: o port ainda não lê essa chave do arquivo.
+/// `MekanismConfig.general.dumpExcessKeepRatio` (`GeneralConfig.java:173`), o padrão; o do arquivo vem por [`tank_settings`].
 pub const DUMP_EXCESS_KEEP_RATIO: f64 = 0.85;
-/// `MekanismConfig.general.radiationEnabled` (`GeneralConfig.java:188`), o padrão: com a radiação ligada o atributo `radioactivity` pede validação.
+/// `MekanismConfig.general.radiationEnabled` (`GeneralConfig.java:188`), o padrão (o do arquivo vem por [`tank_settings`]): com a radiação ligada o atributo
+/// `radioactivity` pede validação.
 pub const RADIATION_ENABLED: bool = true;
 /// A pasta dos mapas de dados dos químicos (`IMekanismDataMapTypes`: `chemical_attribute_fuel`, `_radioactivity`, `_cooled_coolant` e `_heated_coolant`).
 pub const CHEMICAL_ATTRIBUTE_FOLDER: &str = "data_maps/mekanism/chemical";
@@ -2089,57 +2171,72 @@ const CHEMICAL_ATTRIBUTE_PREFIX: &str = "chemical_attribute_";
 /// `ChemicalRadioactivity`, o único atributo que pede validação.
 pub const RADIOACTIVITY_ATTRIBUTE: &str = "radioactivity";
 
-/// Os atributos de cada químico (`IChemicalAttribute`), dos mapas de dados `chemical_attribute_*`: cada arquivo é um tipo de atributo, e as chaves de `values` são os
-/// químicos que o têm. Só `radioactivity` pede validação (`ChemicalRadioactivity.needsValidation`, com a radiação ligada). `remove` tira o químico do mapa, e uma chave
-/// de tag (`#`) fica de fora: a datagen do original só tem ids.
+/// Os arquivos de cada tipo de mapa de dados: o id do tipo (`mekanism:chemical_attribute_fuel`) e os arquivos dele, o do pacote de baixo primeiro
+/// (`DataMapLoader.readData` sobre `listMatchingResourceStacks`).
+pub type DataMapStack = Vec<(String, Vec<DataMapFile>)>;
+
+/// `FileToIdConverter.fileToId` para um arquivo de pacote: `data/<ns>/<pasta>/<caminho>.json` é `<ns>:<caminho>`; `None` para um arquivo de outra pasta ou extensão.
+pub fn data_file_id(file: &str, folder: &str) -> Option<String> {
+    let (namespace, rest) = file.strip_prefix("data/")?.split_once('/')?;
+    let path = rest
+        .strip_prefix(folder)?
+        .strip_prefix('/')?
+        .strip_suffix(".json")?;
+    (!path.is_empty()).then(|| format!("{namespace}:{path}"))
+}
+
+/// O tipo de atributo de um id de mapa de dados (`chemical_attribute_fuel` dá `fuel`), ou `None` para outro mapa.
+fn chemical_attribute_kind(id: &str) -> Option<&str> {
+    let path = id.split_once(':').map_or(id, |(_, path)| path);
+    path.strip_prefix(CHEMICAL_ATTRIBUTE_PREFIX)
+}
+
+/// Os atributos de cada químico (`IChemicalAttribute`), dos mapas de dados `chemical_attribute_*`: cada tipo de mapa é um tipo de atributo, montado como o
+/// `DataMapLoader.buildDataMap` do NeoForge o monta ([`machinery_basis_core::data_map::build`]: a pilha de arquivos, a chave de tag para cada membro que
+/// `members` devolve, `replace` e `remove`). O `bool` diz se o atributo pede validação quando a radiação está ligada: só `radioactivity`
+/// (`ChemicalRadioactivity.needsValidation`); quem pergunta junta a opção na hora ([`chemical_attributes_of`]). Um id que não é de químico nenhum fica no mapa sem
+/// efeito (o original o recusa com um erro no log): ninguém pergunta por ele.
 pub fn chemical_attribute_maps(
-    files: &[(String, Value)],
-    radiation_enabled: bool,
+    stack: &DataMapStack,
+    members: &dyn Fn(&str) -> Vec<String>,
 ) -> ChemicalAttributeMap {
     let mut out = ChemicalAttributeMap::new();
-    let mut sorted: Vec<&(String, Value)> = files.iter().collect();
+    let mut sorted: Vec<&(String, Vec<DataMapFile>)> = stack.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
-    for (id, json) in sorted {
-        let path = id.split_once(':').map_or(id.as_str(), |(_, path)| path);
-        let Some(kind) = path.strip_prefix(CHEMICAL_ATTRIBUTE_PREFIX) else {
+    for (id, files) in sorted {
+        let Some(kind) = chemical_attribute_kind(id) else {
             continue;
         };
-        let needs_validation = kind == RADIOACTIVITY_ATTRIBUTE && radiation_enabled;
-        let removed: Vec<&str> = json
-            .get("remove")
-            .and_then(Value::as_array)
-            .map(|list| list.iter().filter_map(Value::as_str).collect())
-            .unwrap_or_default();
-        let Some(values) = json.get("values").and_then(Value::as_object) else {
-            continue;
-        };
-        for chemical in values.keys() {
-            if chemical.starts_with('#') || removed.contains(&chemical.as_str()) {
-                continue;
-            }
-            out.entry(chemical.clone())
+        let mut chemicals: Vec<String> = machinery_basis_core::data_map::build(files, members)
+            .into_keys()
+            .collect();
+        chemicals.sort();
+        for chemical in chemicals {
+            out.entry(chemical)
                 .or_default()
-                .push((kind.to_owned(), needs_validation));
+                .push((kind.to_owned(), kind == RADIOACTIVITY_ATTRIBUTE));
         }
     }
     out
 }
 
-/// O químico e os atributos dele: o tipo e se pede validação.
+/// O químico e os atributos dele: o tipo e se pede validação com a radiação ligada.
 pub type ChemicalAttributeMap = std::collections::HashMap<String, Vec<(String, bool)>>;
 
-/// Os atributos como a lib os pede (`ChemicalAttributes`), de um mapa já lido.
+/// Os atributos como a lib os pede (`ChemicalAttributes`), de um mapa já lido. `radiation_enabled` é perguntada a cada consulta, como
+/// `ChemicalRadioactivity.needsValidation` pergunta a `IRadiationManager.isRadiationEnabled` (`MekanismConfig.general.radiationEnabled.getOrDefault()`).
 pub fn chemical_attributes_of(
     map: std::sync::Arc<ChemicalAttributeMap>,
+    radiation_enabled: Rc<dyn Fn() -> bool>,
 ) -> machinery_basis_core::chemical::ChemicalAttributes {
     Rc::new(move |chemical: &ChemicalResource| {
         map.get(&*chemical.id)
             .map(|list| {
                 list.iter()
-                    .map(|(kind, needs_validation)| {
+                    .map(|(kind, with_radiation)| {
                         machinery_basis_core::chemical::ChemicalAttribute::new(
                             kind,
-                            *needs_validation,
+                            *with_radiation && radiation_enabled(),
                         )
                     })
                     .collect()
@@ -2174,29 +2271,19 @@ const RADIATION_RATE_SYMBOL: &str = "Sv/h";
 /// As casas de `TooltipHelper.getRadioactivityDisplayShort` (`UnitDisplayUtils.getRadiationDisplay(radioactivity, SVH, 2)`).
 const RADIATION_DECIMALS: i32 = 2;
 
-/// Os valores dos atributos de cada químico, dos mesmos arquivos de [`chemical_attribute_maps`] e com as mesmas regras (`remove`, as chaves de tag de fora).
+/// Os valores dos atributos de cada químico, da mesma pilha de [`chemical_attribute_maps`] e com as mesmas regras.
 pub fn chemical_attribute_data(
-    files: &[(String, Value)],
+    stack: &DataMapStack,
+    members: &dyn Fn(&str) -> Vec<String>,
 ) -> std::collections::HashMap<String, ChemicalAttributeData> {
     let mut out: std::collections::HashMap<String, ChemicalAttributeData> =
         std::collections::HashMap::new();
-    for (id, json) in files {
-        let path = id.split_once(':').map_or(id.as_str(), |(_, path)| path);
-        let Some(kind) = path.strip_prefix(CHEMICAL_ATTRIBUTE_PREFIX) else {
+    for (id, files) in stack {
+        let Some(kind) = chemical_attribute_kind(id) else {
             continue;
         };
-        let removed: Vec<&str> = json
-            .get("remove")
-            .and_then(Value::as_array)
-            .map(|list| list.iter().filter_map(Value::as_str).collect())
-            .unwrap_or_default();
-        let Some(values) = json.get("values").and_then(Value::as_object) else {
-            continue;
-        };
-        for (chemical, value) in values {
-            if chemical.starts_with('#') || removed.contains(&chemical.as_str()) {
-                continue;
-            }
+        for (chemical, value) in machinery_basis_core::data_map::build(files, members) {
+            let value = &value;
             let number = |key: &str| value.get(key).and_then(Value::as_f64);
             let whole = |key: &str| {
                 value
@@ -2204,7 +2291,7 @@ pub fn chemical_attribute_data(
                     .and_then(Value::as_i64)
                     .and_then(|n| i32::try_from(n).ok())
             };
-            let entry = out.entry(chemical.clone()).or_default();
+            let entry = out.entry(chemical).or_default();
             match kind {
                 // `ChemicalRadioactivity.CODEC` aceita o objeto e o número sozinho (`Codec.withAlternative`).
                 RADIOACTIVITY_ATTRIBUTE => {
@@ -5980,9 +6067,78 @@ pub const LIGHTER_THAN_AIR_FLUIDS: [&str; 1] = ["mekanism:steam"];
 /// A água pesada, o único fluido do Mekanism com a textura de outro (`MekanismFluids.java:42-44`).
 pub const HEAVY_WATER: &str = "mekanism:heavy_water";
 
-/// `getFluidTexture(fluid, FLOWING)` a partir do sprite parado: a água e a lava do vanilla (`block/<nome>_still` e `block/<nome>_flow`) e os fluidos do Mekanism
+/// O leite do NeoForge (`NeoForgeMod.MILK`, `minecraft:milk`), que o Mekanism liga (`Mekanism.java:174`, `NeoForgeMod.enableMilkFluid()`): um fluido sem bloco
+/// (`BaseFlowingFluid.Properties` sem `block`: `FluidType.canBePlacedInLevel` dá falso, e ele não vai ao mundo), com o balde de leite do vanilla por recipiente
+/// (`.bucket(() -> Items.MILK_BUCKET)` e o `BucketResourceHandler` que `CapabilityHooks.java:167-169` registra para ele), as texturas `milk_still` e
+/// `milk_flowing` do NeoForge sem tinta (`ClientNeoForgeMod.onRegisterFluidModels`) e a luz 0 do `FluidType` padrão.
+///
+/// As texturas são as do NeoForge (`assets/neoforge/textures/block/milk_still.png` e `milk_flowing.png`, com os `.mcmeta`), copiadas para o espaço de nomes do
+/// mod: o conteúdo de um mod do Horizon só leva arquivos nos espaços de nomes dele, e listar `neoforge` no manifesto o tomaria de qualquer outro mod.
+pub const MILK: &str = "minecraft:milk";
+pub const MILK_BUCKET: &str = "minecraft:milk_bucket";
+pub const MILK_SPRITE: &str = "mekanism:block/milk_still";
+pub const MILK_FLOWING_SPRITE: &str = "mekanism:block/milk_flowing";
+
+/// `BucketResourceHandler.getResource` para os baldes do jogo: o fluido de um `BucketItem` (`bucketItem.content`) e o leite do balde de leite
+/// (`BucketResourceHandler.java:28-31`). Os baldes dos fluidos de mod vêm do arquivo de cada fluido.
+pub fn vanilla_bucket_fluid(item: &str) -> Option<&'static str> {
+    match item {
+        "minecraft:water_bucket" => Some("minecraft:water"),
+        "minecraft:lava_bucket" => Some("minecraft:lava"),
+        MILK_BUCKET => Some(MILK),
+        _ => None,
+    }
+}
+
+/// `Fluid.getBucket` dos fluidos do jogo e do leite: o balde cheio que um balde vazio vira.
+pub fn vanilla_fluid_bucket(fluid: &str) -> Option<&'static str> {
+    match fluid {
+        "minecraft:water" => Some("minecraft:water_bucket"),
+        "minecraft:lava" => Some("minecraft:lava_bucket"),
+        MILK => Some(MILK_BUCKET),
+        _ => None,
+    }
+}
+
+/// `FluidType.getSound(BUCKET_FILL)` (`pickup`) e `BUCKET_EMPTY` da água, da lava e do leite; `None` para um fluido de mod, que diz os dele. Os eventos do leite
+/// no original são `minecraft:item.bucket.fill_milk` e `empty_milk` (`NeoForgeMod.java:649-652`), que o `assets/minecraft/sounds.json` do NeoForge define com as
+/// mesmas amostras, pesos, tom e legenda de `item.bucket.fill` e `item.bucket.empty` do vanilla; o Horizon não deixa um mod acrescentar eventos de som ao espaço
+/// de nomes `minecraft`, e o port toca os do vanilla: o som é o mesmo, o nome do evento não.
+pub fn vanilla_bucket_sound(fluid: &str, pickup: bool) -> Option<&'static str> {
+    match (fluid, pickup) {
+        ("minecraft:water" | MILK, true) => Some("minecraft:item.bucket.fill"),
+        ("minecraft:water" | MILK, false) => Some("minecraft:item.bucket.empty"),
+        ("minecraft:lava", true) => Some("minecraft:item.bucket.fill_lava"),
+        ("minecraft:lava", false) => Some("minecraft:item.bucket.empty_lava"),
+        _ => None,
+    }
+}
+
+/// Quem o item do Fluid Tank ordenha (`ItemBlockFluidTank.getMilkSound`, `:112-121`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Milked {
+    Goat,
+    Mooshroom,
+    Cow,
+}
+
+/// `getMilkSound`: `SoundEvents.GOAT_SCREAMING_MILK` ou `GOAT_MILK`, `MOOSHROOM_MILK` e `COW_MILK`.
+pub fn milk_sound(milked: Milked, screaming: bool) -> Option<&'static str> {
+    Some(match milked {
+        Milked::Goat if screaming => "minecraft:entity.goat.screaming.milk",
+        Milked::Goat => "minecraft:entity.goat.milk",
+        Milked::Mooshroom => "minecraft:entity.mooshroom.milk",
+        Milked::Cow => "minecraft:entity.cow.milk",
+    })
+}
+
+/// `getFluidTexture(fluid, FLOWING)` a partir do sprite parado: a água e a lava do vanilla (`block/<nome>_still` e `block/<nome>_flow`), o leite do NeoForge
+/// (`milk_still` e `milk_flowing`) e os fluidos do Mekanism
 /// (`mek_liquid/<nome>` e `mek_liquid/<nome>_flow`: `FluidDeferredRegister.LIQUID_FLOW`, o vapor em `MekanismFluids.java:41`, e as texturas próprias do port, que têm as duas).
 pub fn flowing_sprite(still: &str) -> String {
+    if still == MILK_SPRITE {
+        return MILK_FLOWING_SPRITE.to_owned();
+    }
     match still.strip_suffix("_still") {
         Some(base) => format!("{base}_flow"),
         None => format!("{still}_flow"),
@@ -6021,6 +6177,15 @@ pub fn contents_fluid(id: &str, spec: Option<(u32, u32)>) -> Option<ContentsFlui
                 sprite: "minecraft:block/lava_still".to_owned(),
                 rgb: white,
                 light: 15,
+                lighter_than_air: false,
+            });
+        }
+        // O leite do NeoForge: `FluidModel.Unbaked` sem tinta, e a luz 0 do `FluidType` padrão.
+        MILK => {
+            return Some(ContentsFluid {
+                sprite: MILK_SPRITE.to_owned(),
+                rgb: white,
+                light: 0,
                 lighter_than_air: false,
             });
         }

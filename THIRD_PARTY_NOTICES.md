@@ -51,3 +51,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+`mods/mekanism/content/assets/mekanism/textures/block/milk_still.png` e `milk_flowing.png`, com os `.mcmeta`, são as texturas do
+leite do [NeoForge](https://github.com/neoforged/NeoForge) 26.3.0.100 (`assets/neoforge/textures/block/`), copiadas sem mudança. O
+NeoForge é distribuído sob a GNU Lesser General Public License, versão 2.1 (o texto está em
+<https://github.com/neoforged/NeoForge/blob/1.21.x/LICENSE.txt> e em <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt>).
+Os dois arquivos seguem sob essa licença, não sob a deste projeto.

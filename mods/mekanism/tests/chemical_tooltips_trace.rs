@@ -2,10 +2,11 @@
 //! (`dev/referencia/rastros/chemical_tooltips.jsonl`, gravado pela `CenaTelas`: todo químico do registro, sem e com os tooltips avançados, cada linha
 //! como trechos `[texto, cor]`). O port monta as linhas com os mapas de dados e o idioma do próprio conteúdo.
 
+use machinery_basis_core::data_map::DataMapFile;
 use machinery_basis_core::temperature::TemperatureUnit;
 use mekanism_rules::{
     AttributeTooltip, CHEMICAL_ATTRIBUTE_FOLDER, Chat, ChemicalAttributeData, DECAY_BLACKLIST_TAG,
-    chemical_attribute_data, chemical_attribute_lines, chemical_registry_line,
+    DataMapStack, chemical_attribute_data, chemical_attribute_lines, chemical_registry_line,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -22,6 +23,14 @@ fn json(path: PathBuf) -> Value {
     .unwrap()
 }
 
+/// A pilha de quem só tem um arquivo por id, já lido.
+fn data_map_stack(files: &[(String, Value)]) -> DataMapStack {
+    files
+        .iter()
+        .map(|(id, json)| (id.clone(), vec![DataMapFile::of_value(json).unwrap()]))
+        .collect()
+}
+
 fn data() -> HashMap<String, ChemicalAttributeData> {
     let folder = root().join(format!("content/data/mekanism/{CHEMICAL_ATTRIBUTE_FOLDER}"));
     let mut files = Vec::new();
@@ -31,7 +40,7 @@ fn data() -> HashMap<String, ChemicalAttributeData> {
         files.push((format!("mekanism:{name}"), json(path)));
     }
     assert_eq!(files.len(), 4, "os quatro mapas de dados dos químicos");
-    chemical_attribute_data(&files)
+    chemical_attribute_data(&data_map_stack(&files), &|_| Vec::new())
 }
 
 fn lang() -> HashMap<String, String> {
@@ -277,7 +286,7 @@ fn the_data_maps_give_the_values_with_the_defaults_of_the_codecs() {
             serde_json::json!({"values": {"a:w": 1.0}}),
         ),
     ];
-    let data = chemical_attribute_data(&files);
+    let data = chemical_attribute_data(&data_map_stack(&files), &|_| Vec::new());
     assert_eq!(data.len(), 2);
     assert_eq!(
         data["a:x"],

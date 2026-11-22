@@ -513,6 +513,11 @@ impl ChemicalTankTile {
     }
 
     /// `dumping`.
+    /// `MekanismConfig.general.dumpExcessKeepRatio`, que o original lê a cada descarte: quem dá o tick entrega o valor de agora.
+    pub fn set_dump_excess_keep_ratio(&mut self, ratio: f64) {
+        self.dump_excess_keep_ratio = ratio;
+    }
+
     pub fn dumping(&self) -> GasMode {
         self.dumping.get()
     }

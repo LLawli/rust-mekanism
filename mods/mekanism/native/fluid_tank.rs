@@ -55,7 +55,7 @@ const ACTIVE_PROPERTY: &str = "active";
 const EMPTY_BUCKET: &str = "minecraft:bucket";
 const BUCKET_VOLUME: i32 = 1000;
 /// `NeoForgeMod.MILK`.
-const MILK: &str = "minecraft:milk";
+const MILK: &str = rules::MILK;
 /// Um objeto vivo que não anda por tantos ticks sai da tabela (o bloco foi quebrado ou o chunk descarregado).
 const STALE_TICKS: i64 = 100;
 const SWEEP_TICKS: i64 = 200;
@@ -115,22 +115,20 @@ fn tier_values(tier: usize) -> (u64, i32) {
 // ---------------------------------------------------------------------------------------------------------------------------
 // A capability de fluido dos itens (`Capabilities.FLUID.item()`): os baldes e o item do próprio tanque.
 
-/// `BucketResourceHandler`: o balde de água, o de lava e o de cada fluido de mod, e o balde vazio.
+/// `BucketResourceHandler`: o balde de água, o de lava, o de leite e o de cada fluido de mod, e o balde vazio.
 struct Buckets;
 
 fn bucket_fluid(item: &str) -> Option<FluidResource> {
-    match item {
-        "minecraft:water_bucket" => Some(FluidResource::new("minecraft:water")),
-        "minecraft:lava_bucket" => Some(FluidResource::new("minecraft:lava")),
-        other => machinery_basis_core::liquid_data::current().by_bucket(other).map(|spec| FluidResource::new(&spec.id)),
+    match rules::vanilla_bucket_fluid(item) {
+        Some(fluid) => Some(FluidResource::new(fluid)),
+        None => machinery_basis_core::liquid_data::current().by_bucket(item).map(|spec| FluidResource::new(&spec.id)),
     }
 }
 
 fn fluid_bucket(fluid: &str) -> Option<String> {
-    match fluid {
-        "minecraft:water" => Some("minecraft:water_bucket".to_owned()),
-        "minecraft:lava" => Some("minecraft:lava_bucket".to_owned()),
-        other => machinery_basis_core::liquid_data::current().iter().find(|spec| spec.id == other).map(|spec| spec.bucket.clone()),
+    match rules::vanilla_fluid_bucket(fluid) {
+        Some(bucket) => Some(bucket.to_owned()),
+        None => machinery_basis_core::liquid_data::current().iter().find(|spec| spec.id == fluid).map(|spec| spec.bucket.clone()),
     }
 }
 
@@ -931,15 +929,14 @@ fn creative(game: &Game<'_>) -> bool {
 
 /// `FluidType.getSound(BUCKET_FILL)` e `BUCKET_EMPTY` de um fluido.
 fn bucket_sound(fluid: &str, pickup: bool) -> String {
-    match (fluid, pickup) {
-        ("minecraft:lava", true) => "minecraft:item.bucket.fill_lava".to_owned(),
-        ("minecraft:lava", false) => "minecraft:item.bucket.empty_lava".to_owned(),
-        (other, _) => match machinery_basis_core::liquid_data::current().iter().find(|spec| spec.id == other) {
-            Some(spec) if pickup => spec.fill_sound.clone(),
-            Some(spec) => spec.empty_sound.clone(),
-            None if pickup => "minecraft:item.bucket.fill".to_owned(),
-            None => "minecraft:item.bucket.empty".to_owned(),
-        },
+    if let Some(sound) = rules::vanilla_bucket_sound(fluid, pickup) {
+        return sound.to_owned();
+    }
+    match machinery_basis_core::liquid_data::current().iter().find(|spec| spec.id == fluid) {
+        Some(spec) if pickup => spec.fill_sound.clone(),
+        Some(spec) => spec.empty_sound.clone(),
+        None if pickup => "minecraft:item.bucket.fill".to_owned(),
+        None => "minecraft:item.bucket.empty".to_owned(),
     }
 }
 
@@ -985,10 +982,14 @@ pub(in crate::game) fn set_bucket_mode(game: &Game<'_>, stack: &mut ItemStack, m
 }
 
 /// `tryClaimItem` e `canAccessOrDisplayError` no começo de `use` e de `interactLivingEntity` (`ItemBlockFluidTank.java:82-87` e `:141-146`): `Some` encerra o uso.
-fn claim_or_refuse(game: &mut Game<'_>, stack: &ItemStack) -> Option<UseOutcome> {
+/// `keep` diz se a posse fica na pilha da mão: no `use` fica sempre (`ItemAccessUtils.playerHandAccess`); na entidade, o jogador com materiais infinitos entrega a
+/// `interactLivingEntity` uma cópia da pilha (`Player.interactOn`, `Player.java:875-877`), e a posse se perde com ela (o aviso e o pacote saem do mesmo jeito).
+fn claim_or_refuse(game: &mut Game<'_>, stack: &ItemStack, keep: bool) -> Option<UseOutcome> {
     let mut owned = stack.clone();
     if basis::security_item_claim(game, &mut owned) {
-        *game.held_mut() = Some(owned);
+        if keep {
+            *game.held_mut() = Some(owned);
+        }
         return Some(UseOutcome::Success);
     }
     if !basis::security_item_access_or_error(game, stack) {
@@ -1000,7 +1001,7 @@ fn claim_or_refuse(game: &mut Game<'_>, stack: &ItemStack) -> Option<UseOutcome>
 /// `ItemBlockFluidTank.use` (`:135-181`) com o item no modo balde: o primeiro uso só toma posse; depois, agachado o item põe um balde no bloco da mira (ou no vizinho
 /// da face), e em pé tira um balde da fonte da mira.
 fn item_use(game: &mut Game<'_>, stack: &ItemStack) -> UseOutcome {
-    if let Some(outcome) = claim_or_refuse(game, stack) {
+    if let Some(outcome) = claim_or_refuse(game, stack, true) {
         return outcome;
     }
     let sneaking = game.native_sneaking();
@@ -1079,6 +1080,8 @@ fn cauldron_use(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) -> bool {
     }
     game.award_custom_stat(if filled_cauldron { "fill_cauldron" } else { "use_cauldron" }, 1);
     game.award_stat("used", &stack.item, 1);
+    // `ServerPlayerGameMode.useItemOn` (`:443-446`): o `useItemOn` do bloco que consome a ação dispara `ITEM_USED_ON_BLOCK` com a cópia da pilha de antes do uso.
+    game.trigger_block("minecraft:item_used_on_block", pos, stack);
     game.audio.play(&bucket_sound(&fluid.id, !filled_cauldron), Some(center(pos)), 1.0, 1.0);
     game.post_block_game_event(if filled_cauldron { "minecraft:fluid_place" } else { "minecraft:fluid_pickup" }, pos, None, None);
     hand_apply(game, &hand, infinite);
@@ -1260,63 +1263,176 @@ pub(in crate::game) fn client_use_end(game: &mut Game<'_>, hand: horizon_client:
     false
 }
 
+thread_local! {
+    /// As marcas de reentrada dos invólucros de `Game::interact_entity` e de `remote_use_entity`.
+    static IN_INTERACT_ENTITY: Cell<bool> = const { Cell::new(false) };
+    static IN_CLIENT_USE_ENTITY: Cell<bool> = const { Cell::new(false) };
+}
+
+/// O som de `getMilkSound` (`ItemBlockFluidTank.java:112-121`): a cabra (a que grita tem o dela), o cogumelo-vaca e a vaca; `None` para quem não dá leite.
+fn milk_sound(species: horizon_client::mobs::Species, screaming: bool) -> Option<&'static str> {
+    rules::milk_sound(
+        match species {
+            horizon_client::mobs::Species::Goat => rules::Milked::Goat,
+            horizon_client::mobs::Species::Mooshroom => rules::Milked::Mooshroom,
+            horizon_client::mobs::Species::Cow => rules::Milked::Cow,
+            _ => return None,
+        },
+        screaming,
+    )
+}
+
 /// `ItemBlockFluidTank.interactLivingEntity` (`:77-109`): o item no modo balde ordenha a vaca, o cogumelo-vaca e a cabra adultos. O primeiro uso só toma posse; depois o
-/// leite (`NeoForgeMod.MILK`) entra no item, um balde ou o que couber, com o som do bicho.
-pub(in crate::game) fn interact_entity(game: &mut Game<'_>, entity: i32, stack: Option<&ItemStack>, claimed: &mut bool) {
-    use horizon_client::mobs::Species;
-    let Some(stack) = stack else {
-        return;
-    };
-    if *claimed || !bucket_mode(game, stack) {
-        return;
-    }
+/// leite (`NeoForgeMod.MILK`) entra no item, um balde ou o que couber, com o som do bicho. `FAIL` (sem acesso, ou nada coube) não consome a ação, e
+/// `Player.interactOn` o devolve como `PASS` (`Player.java:880-891`).
+fn interact_living_entity(game: &mut Game<'_>, entity: i32, stack: &ItemStack) -> UseOutcome {
     let Some((species, baby, screaming)) = u32::try_from(entity).ok().and_then(|id| game.mobs.iter().find(|mob| mob.id == id)).map(|mob| (mob.species(), mob.is_baby(), mob.extra.screaming)) else {
-        return;
+        return UseOutcome::Pass;
     };
-    if baby {
-        return;
-    }
-    match claim_or_refuse(game, stack) {
-        Some(UseOutcome::Success) => {
-            *claimed = true;
-            return;
-        }
-        // `FAIL` não consome a ação: o clique segue.
-        Some(_) => return,
-        None => {}
-    }
-    // `getMilkSound`.
-    let sound = match species {
-        Species::Goat if screaming => "minecraft:entity.goat.screaming.milk",
-        Species::Goat => "minecraft:entity.goat.milk",
-        Species::Mooshroom => "minecraft:entity.mooshroom.milk",
-        Species::Cow => "minecraft:entity.cow.milk",
-        _ => return,
-    };
-    CLOCK.with(|clock| clock.set(game.world.game_time as u64));
+    let sound = milk_sound(species, screaming);
     let infinite = creative(game);
-    let hand = hand_access(game, stack, infinite, false);
-    let lookup = items_as(true);
-    let inserted = {
-        let one = OneByOne(&hand);
-        let Some(held) = lookup(&one) else {
-            return;
-        };
-        let transaction = Transaction::open_safe();
-        let inserted = held.insert(&FluidResource::new(MILK), BUCKET_VOLUME, &transaction);
-        if inserted > 0 {
-            transaction.commit();
-        }
-        inserted
-    };
-    // "Fail if we can't insert any, we allow partial bucket amounts for milking though".
-    if inserted == 0 {
-        return;
+    let outcome = machinery_basis_core::bucket_item::interact_living_entity(true, baby, sound.is_some(), infinite, &mut Milking { game: &mut *game, stack, infinite });
+    if let (UseOutcome::Success, Some(sound), true) = (outcome, sound, MILKED.take()) {
+        let at = game.native_acting_player().map(|player| player.position);
+        game.audio.play(sound, at, 1.0, 1.0);
     }
-    let at = game.native_acting_player().map(|player| player.position);
-    game.audio.play(sound, at, 1.0, 1.0);
-    hand_apply(game, &hand, infinite);
-    *claimed = true;
+    outcome
+}
+
+thread_local! {
+    /// Se o último `Milking::milk` pôs leite no item (o `SUCCESS` da posse não toca o som).
+    static MILKED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// O jogo por trás de `interactLivingEntity`: a posse do item e o leite que entra na pilha da mão.
+struct Milking<'a, 'g> {
+    game: &'a mut Game<'g>,
+    stack: &'a ItemStack,
+    infinite: bool,
+}
+
+impl machinery_basis_core::bucket_item::LivingUse for Milking<'_, '_> {
+    fn claim(&mut self, keep: bool) -> machinery_basis_core::bucket_item::Claim {
+        use machinery_basis_core::bucket_item::Claim;
+        MILKED.set(false);
+        match claim_or_refuse(self.game, self.stack, keep) {
+            Some(UseOutcome::Success) => Claim::Claimed,
+            Some(_) => Claim::Refused,
+            None => Claim::Owned,
+        }
+    }
+
+    fn milk(&mut self) -> Option<i32> {
+        CLOCK.with(|clock| clock.set(self.game.world.game_time as u64));
+        let hand = hand_access(self.game, self.stack, self.infinite, false);
+        let lookup = items_as(true);
+        let inserted = {
+            let one = OneByOne(&hand);
+            let held = lookup(&one)?;
+            let transaction = Transaction::open_safe();
+            let inserted = held.insert(&FluidResource::new(MILK), BUCKET_VOLUME, &transaction);
+            if inserted > 0 {
+                transaction.commit();
+            }
+            inserted
+        };
+        if inserted > 0 {
+            hand_apply(self.game, &hand, self.infinite);
+            MILKED.set(true);
+        }
+        Some(inserted)
+    }
+}
+
+/// O invólucro de `Game::interact_entity` (`Player.interactOn`), HEAD cancelável com marca de reentrada, para o item do Fluid Tank no modo balde: a função roda por
+/// dentro primeiro, porque o `interact` da entidade tem a vez antes do item (`Player.java:862-872`: o lobo manso que senta, o aldeão que abre a troca), e só quando
+/// ela passa o `interactLivingEntity` do item age (`:874-889`). O `SUCCESS` dele dispara `PLAYER_INTERACTED_WITH_ENTITY` com a pilha de antes do uso
+/// (`ServerGamePacketListenerImpl.java:1952-1955`), o evento `ENTITY_INTERACT` (`Player.java:881`) e o balanço da mão. `None` fora do caso.
+pub(in crate::game) fn interact_entity_wrap(game: &mut Game<'_>, target: Option<crate::game::InteractTarget>) -> Option<crate::game::Result<bool>> {
+    if IN_INTERACT_ENTITY.get() {
+        return None;
+    }
+    let stack = game.held().cloned().filter(|stack| bucket_mode(game, stack))?;
+    let named = match target {
+        Some(target) => Some(target.id),
+        None => game.pick_entity_hit().flatten(),
+    };
+    IN_INTERACT_ENTITY.set(true);
+    let inner = game.interact_entity(target);
+    IN_INTERACT_ENTITY.set(false);
+    let (Ok(false), Some(entity)) = (&inner, named) else {
+        return Some(inner);
+    };
+    // A entidade passou (`inner` é `Ok(false)`): o item responde, e só o `SUCCESS` dele consome a ação.
+    if machinery_basis_core::bucket_item::interact_on(false, || interact_living_entity(game, entity, &stack)) != UseOutcome::Success {
+        return Some(Ok(false));
+    }
+    if let Some(mob) = u32::try_from(entity).ok().and_then(|id| game.mobs.iter().find(|mob| mob.id == id)) {
+        let position = [mob.position.x, mob.position.y, mob.position.z];
+        let view = game.mob_entity(mob);
+        game.trigger_item_entity("minecraft:player_interacted_with_entity", &stack, &view);
+        let context = game.who_context(Some(horizon_client::mobs::Who::Player), None);
+        game.post_game_event("minecraft:entity_interact", position, context);
+    }
+    game.swing_arm();
+    Some(Ok(true))
+}
+
+/// O que `ItemBlockFluidTank.interactLivingEntity` devolveria no cliente para o bicho da mira, sem mudar nada: `Success` quando a posse seria tomada (o item sem
+/// dono) ou quando o leite caberia.
+fn client_entity_outcome(game: &Game<'_>, stack: &ItemStack) -> UseOutcome {
+    // O mesmo alvo de `remote_use_entity`: o bicho da mira, antes de um bloco e de um objeto (barco, carrinho, moldura) mais perto.
+    let Some((index, distance)) = game.mob_hit().filter(|(_, distance)| game.before_block(*distance)) else {
+        return UseOutcome::Pass;
+    };
+    if game.remote_object_hit(false).is_some_and(|hit| hit.distance < distance && game.before_block(hit.distance)) {
+        return UseOutcome::Pass;
+    }
+    let mob = &game.mobs[index];
+    if mob.is_baby() {
+        return UseOutcome::Pass;
+    }
+    if !matches!(game.native_component(stack, machinery_basis_core::security::OWNER_COMPONENT), Ok(Some(_))) {
+        return UseOutcome::Success;
+    }
+    if milk_sound(mob.species(), mob.extra.screaming).is_none() {
+        return UseOutcome::Pass;
+    }
+    let hand = hand_access(game, stack, game.creative, false);
+    let lookup = items_as(true);
+    let one = OneByOne(&hand);
+    let Some(held) = lookup(&one) else {
+        return UseOutcome::Pass;
+    };
+    // A transação não é confirmada: nada do que o item mudou fica.
+    let transaction = Transaction::open_safe();
+    if held.insert(&FluidResource::new(MILK), BUCKET_VOLUME, &transaction) > 0 { UseOutcome::Success } else { UseOutcome::Fail }
+}
+
+/// O começo de `tank_use_entity` (o invólucro de `remote_use_entity`, `MultiPlayerGameMode.interact`): com o item no modo balde na mão `hand`, o que o
+/// `interactLivingEntity` devolveria. `None` fora do caso (ou na chamada de dentro).
+pub(in crate::game) fn client_use_entity_begin(game: &mut Game<'_>, hand: horizon_client::first_person::Hand) -> Option<UseOutcome> {
+    if IN_CLIENT_USE_ENTITY.get() {
+        return None;
+    }
+    let stack = game.with_hand(hand, |game| game.held().cloned()).filter(|stack| bucket_mode(game, stack))?;
+    let outcome = game.with_hand(hand, |game| client_entity_outcome(game, &stack));
+    IN_CLIENT_USE_ENTITY.set(true);
+    Some(outcome)
+}
+
+/// O fim de `tank_use_entity`: se a entidade não tomou o clique (o pacote `Interact` já saiu, e o servidor ordenha) e o item daria `SUCCESS`, a mão balança
+/// (`SwingSource.PREDICTED`, `Minecraft.java:1790-1795`) e o clique acaba ali: o `UseItem` não sai. O `FAIL` e o `PASS` deixam o `use` do item ter a vez (`:1823`).
+pub(in crate::game) fn client_use_entity_end(game: &mut Game<'_>, hand: horizon_client::first_person::Hand, outcome: UseOutcome, done: bool) -> bool {
+    IN_CLIENT_USE_ENTITY.set(false);
+    if done {
+        return true;
+    }
+    if outcome == UseOutcome::Success {
+        game.with_hand(hand, Game::swing_arm);
+        return true;
+    }
+    false
 }
 
 /// `FluidTankItemDispenseBehavior.execute` (`:223-266`): no dispensador o item no modo balde pega a fonte da frente ou põe um balde ali; se nada passa, ou fora do modo
