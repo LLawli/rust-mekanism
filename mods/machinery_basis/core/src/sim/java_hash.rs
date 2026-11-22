@@ -328,6 +328,162 @@ pub fn identity_set_order<K: Copy + PartialEq>(
         .collect()
 }
 
+/// Um `HashMap<K, V>` (ou o `HashSet<K>` que mora num, com `V = ()`) do Java para chaves quaisquer: quem chama dá o `hashCode` de cada
+/// chave, e a igualdade é a do `equals` (o `PartialEq`). As regras da ordem são as de [`JavaIntMap`]: a tabela nasce com 16 no primeiro
+/// `put`, dobra quando o tamanho passa de 0,75 dela e nunca encolhe, e cada balde fica na ordem de chegada.
+#[derive(Clone, Debug)]
+pub struct JavaHashMap<K, V> {
+    buckets: Vec<Vec<(i32, K, V)>>,
+    size: usize,
+    treeified: bool,
+}
+
+impl<K, V> Default for JavaHashMap<K, V> {
+    fn default() -> Self {
+        Self {
+            buckets: Vec::new(),
+            size: 0,
+            treeified: false,
+        }
+    }
+}
+
+impl<K: PartialEq, V> JavaHashMap<K, V> {
+    pub fn len(&self) -> usize {
+        self.size
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
+
+    /// `table.length` (0 antes do primeiro `put`).
+    pub fn capacity(&self) -> usize {
+        self.buckets.len()
+    }
+
+    fn index(&self, hash: i32) -> usize {
+        spread(hash) as usize & (self.buckets.len() - 1)
+    }
+
+    pub fn get(&self, hash: i32, key: &K) -> Option<&V> {
+        if self.buckets.is_empty() {
+            return None;
+        }
+        self.buckets[self.index(hash)]
+            .iter()
+            .find(|(h, k, _)| *h == hash && k == key)
+            .map(|(_, _, value)| value)
+    }
+
+    pub fn get_mut(&mut self, hash: i32, key: &K) -> Option<&mut V> {
+        if self.buckets.is_empty() {
+            return None;
+        }
+        let index = self.index(hash);
+        self.buckets[index]
+            .iter_mut()
+            .find(|(h, k, _)| *h == hash && k == key)
+            .map(|(_, _, value)| value)
+    }
+
+    fn double(&mut self) {
+        let old = self.buckets.len();
+        let mut next: Vec<Vec<(i32, K, V)>> = (0..old * 2).map(|_| Vec::new()).collect();
+        for (index, bucket) in std::mem::take(&mut self.buckets).into_iter().enumerate() {
+            for (hash, key, value) in bucket {
+                let target = if spread(hash) as usize & old == 0 {
+                    index
+                } else {
+                    index + old
+                };
+                next[target].push((hash, key, value));
+            }
+        }
+        self.buckets = next;
+    }
+
+    /// `HashMap.put`: devolve o valor que a chave tinha (a chave que já estava fica, como no Java).
+    pub fn put(&mut self, hash: i32, key: K, value: V) -> Option<V> {
+        if self.buckets.is_empty() {
+            self.buckets = (0..16).map(|_| Vec::new()).collect();
+        }
+        let index = self.index(hash);
+        if let Some(slot) = self.buckets[index]
+            .iter_mut()
+            .find(|(h, k, _)| *h == hash && *k == key)
+        {
+            return Some(std::mem::replace(&mut slot.2, value));
+        }
+        self.buckets[index].push((hash, key, value));
+        if self.buckets[index].len() > TREEIFY_THRESHOLD {
+            if self.buckets.len() < MIN_TREEIFY_CAPACITY {
+                self.double();
+            } else {
+                self.treeified = true;
+            }
+        }
+        self.size += 1;
+        if self.size > self.buckets.len() * 3 / 4 {
+            self.double();
+        }
+        None
+    }
+
+    /// `HashMap.remove`: o nó sai do balde e a tabela fica do tamanho que estava.
+    pub fn remove(&mut self, hash: i32, key: &K) -> Option<V> {
+        if self.buckets.is_empty() {
+            return None;
+        }
+        let index = self.index(hash);
+        let at = self.buckets[index]
+            .iter()
+            .position(|(h, k, _)| *h == hash && k == key)?;
+        self.size -= 1;
+        Some(self.buckets[index].remove(at).2)
+    }
+
+    /// `entrySet().removeIf` pelo iterador do `HashMap`: percorre na ordem da tabela, e quem sai não muda o lugar dos outros. Devolve as
+    /// chaves que saíram, na ordem em que saíram.
+    pub fn remove_if(&mut self, mut test: impl FnMut(&K, &mut V) -> bool) -> Vec<(i32, K)> {
+        let mut removed = Vec::new();
+        for bucket in &mut self.buckets {
+            let mut kept = Vec::with_capacity(bucket.len());
+            for (hash, key, mut value) in bucket.drain(..) {
+                if test(&key, &mut value) {
+                    removed.push((hash, key));
+                } else {
+                    kept.push((hash, key, value));
+                }
+            }
+            *bucket = kept;
+        }
+        self.size -= removed.len();
+        removed
+    }
+
+    /// `HashMap.clear`: os baldes ficam vazios e a tabela do tamanho que estava.
+    pub fn clear(&mut self) {
+        for bucket in &mut self.buckets {
+            bucket.clear();
+        }
+        self.size = 0;
+    }
+
+    /// Algum balde chegou a nove nós numa tabela de 64 ou mais: no Java ele virou árvore, e a ordem deste mapa pode não ser a dele.
+    pub fn treeified(&self) -> bool {
+        self.treeified
+    }
+
+    /// `entrySet()` na ordem da tabela, com o `hashCode` de cada chave.
+    pub fn iter(&self) -> impl Iterator<Item = (i32, &K, &V)> {
+        self.buckets
+            .iter()
+            .flatten()
+            .map(|(hash, key, value)| (*hash, key, value))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

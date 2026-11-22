@@ -59,6 +59,7 @@ pub mod placement;
 pub mod pop_resource;
 pub mod quick_move;
 pub mod radial;
+pub mod radiation;
 pub mod rate_limit;
 pub mod recipe;
 pub mod recipe_book;
