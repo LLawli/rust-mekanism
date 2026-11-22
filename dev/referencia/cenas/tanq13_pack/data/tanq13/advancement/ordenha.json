@@ -1,0 +1,14 @@
+{
+  "criteria": {
+    "ordenha": {
+      "trigger": "minecraft:player_interacted_with_entity",
+      "conditions": {
+        "item": {
+          "items": "mekanism:basic_fluid_tank"
+        }
+      }
+    }
+  },
+  "requirements": [["ordenha"]],
+  "rewards": {"function": "tanq13:ordenha"}
+}

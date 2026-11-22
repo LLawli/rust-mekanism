@@ -1,0 +1,134 @@
+# Tanques, 13.ª rodada: a ordenha do anfitrião com o convidado no mundo (o bicho mais perto, como o `CenaDois`), os dois avanços lidos por uma marca no mundo (a
+# recompensa do avanço põe um bloco acima do jogador: o seletor `advancements=` do Horizon só lê o anfitrião), e o clique no Fluid Tank com o item na mão (a tela).
+# O data pack é `cenas/tanq13_pack/`. Em sobrevivência. As vacas ficam na mesma linha do jogador (z = 0,5): na 12.ª rodada a vaca do anfitrião estava na diagonal,
+# atrás do caldeirão, e no port (a mira de verdade) o clique caía no caldeirão; o `CenaDois` põe o `EntityHitResult` à mão e não vê o bloco.
+lan 25599
+espera_convidado
+descongela
+srv gamemode survival @a
+srv difficulty peaceful
+srv clear @a
+caixa 306
+srv datapack enable "file/tanq13"
+srv kill @e[type=minecraft:cow]
+srv setblock 304 -61 2 minecraft:water
+srv setblock 308 -61 2 minecraft:water
+srv setblock 305 -60 1 minecraft:cauldron
+srv setblock 309 -60 1 minecraft:cauldron
+srv summon minecraft:cow 302.5 -60 0.5 {NoAI:1b}
+srv summon minecraft:cow 310.5 -60 0.5 {NoAI:1b}
+srv tp Convidado 304.5 -60.0 0.5 0 0
+srv tp Dev 308.5 -60.0 0.5 0 0
+srv advancement revoke @a only tanq13:ordenha
+srv advancement revoke @a only tanq13:caldeirao
+espera 60
+teste pack_ordenha_conv execute if entity @a[name=Convidado,advancements={tanq13:ordenha=false}]
+teste pack_ordenha_anf execute if entity @a[name=Dev,advancements={tanq13:ordenha=false}]
+# Convidado.
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+conv clique_entidade minecraft:cow
+espera 20
+conv clique_entidade minecraft:cow
+espera 20
+teste ordenha_marca_conv execute if block 304 -57 0 minecraft:gold_block
+teste ordenha_seletor_conv execute if entity @a[name=Convidado,advancements={tanq13:ordenha=true}]
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+conv clique_ar
+espera 20
+conv clique_bloco 304.5 -60.1 2.5
+espera 20
+conv clique_bloco 305.5 -59.7 1.5
+espera 20
+teste caldeirao_conv execute if block 305 -60 1 minecraft:water_cauldron
+teste caldeirao_marca_conv execute if block 304 -56 0 minecraft:diamond_block
+teste caldeirao_seletor_conv execute if entity @a[name=Convidado,advancements={tanq13:caldeirao=true}]
+# O clique no Fluid Tank com o item na mão: vazio no modo balde, com 1.000 mB de água no modo balde, e vazio fora do modo balde.
+srv setblock 304 -60 -1 mekanism:basic_fluid_tank
+espera 20
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+conv clique_bloco 304.5 -59.5 -0.5
+espera 20
+conv ler tanque_balde_vazio
+nbt tanque_balde_vazio_conv 304 -60 -1
+conv fechar
+espera 20
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true,mekanism:fluids={containers:[{amount:1000L,type:{id:"minecraft:water"}}]}]
+espera 20
+conv clique_bloco 304.5 -59.5 -0.5
+espera 20
+conv ler tanque_balde_agua
+nbt tanque_balde_agua_conv 304 -60 -1
+conv fechar
+espera 20
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank
+espera 20
+conv clique_bloco 304.5 -59.5 -0.5
+espera 20
+conv ler tanque_item_vazio
+nbt tanque_item_vazio_conv 304 -60 -1
+conv fechar
+espera 20
+srv setblock 304 -60 -1 minecraft:air
+# Dev.
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+anf clique_entidade minecraft:cow
+espera 20
+anf clique_entidade minecraft:cow
+espera 20
+teste ordenha_marca_anf execute if block 308 -57 0 minecraft:gold_block
+teste ordenha_seletor_anf execute if entity @a[name=Dev,advancements={tanq13:ordenha=true}]
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+anf clique_ar
+espera 20
+anf clique_bloco 308.5 -60.1 2.5
+espera 20
+anf clique_bloco 309.5 -59.7 1.5
+espera 20
+teste caldeirao_anf execute if block 309 -60 1 minecraft:water_cauldron
+teste caldeirao_marca_anf execute if block 308 -56 0 minecraft:diamond_block
+teste caldeirao_seletor_anf execute if entity @a[name=Dev,advancements={tanq13:caldeirao=true}]
+# O clique no Fluid Tank com o item na mão: vazio no modo balde, com 1.000 mB de água no modo balde, e vazio fora do modo balde.
+srv setblock 308 -60 -1 mekanism:basic_fluid_tank
+espera 20
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+anf clique_bloco 308.5 -59.5 -0.5
+espera 20
+anf ler tanque_balde_vazio
+nbt tanque_balde_vazio_anf 308 -60 -1
+anf fechar
+espera 20
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true,mekanism:fluids={containers:[{amount:1000L,type:{id:"minecraft:water"}}]}]
+espera 20
+anf clique_bloco 308.5 -59.5 -0.5
+espera 20
+anf ler tanque_balde_agua
+nbt tanque_balde_agua_anf 308 -60 -1
+anf fechar
+espera 20
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank
+espera 20
+anf clique_bloco 308.5 -59.5 -0.5
+espera 20
+anf ler tanque_item_vazio
+nbt tanque_item_vazio_anf 308 -60 -1
+anf fechar
+espera 20
+srv setblock 308 -60 -1 minecraft:air
+# A limpeza: nada de fonte, de marca nem de bicho no mundo do original.
+srv fill 304 -60 -1 309 -60 2 minecraft:air
+srv fill 304 -57 0 308 -56 0 minecraft:air
+srv setblock 304 -61 2 minecraft:black_concrete
+srv setblock 308 -61 2 minecraft:black_concrete
+srv kill @e[type=minecraft:cow]
+srv kill @e[type=minecraft:item]
+srv clear @a
+srv advancement revoke @a only tanq13:ordenha
+srv advancement revoke @a only tanq13:caldeirao
+srv datapack disable "file/tanq13"
+fim

@@ -1,0 +1,52 @@
+# Tanques, 13.ª rodada: o vídeo com som do original com um cliente só (o anfitrião), pelo `oficial_mesa_video.sh` sem a medida antes. A mesma cena do port
+# (`horizon2/h2_tanques13.py video`) sem o convidado: a ordenha (a posse e duas vezes o leite), o leite no Fluid Tank e a tela de outro tanque.
+descongela
+srv time set noon
+srv weather clear
+srv gamerule advance_time false
+srv gamerule advance_weather false
+srv gamemode survival @a
+srv kill @e[type=minecraft:cow]
+srv clear @a
+srv fill 300 120 -6 312 123 10 minecraft:air
+srv fill 300 119 -2 312 119 8 minecraft:glass
+srv summon minecraft:cow 304.5 120 5.5 {NoAI:1b,Rotation:[180f,0f]}
+srv summon minecraft:cow 308.5 120 5.5 {NoAI:1b,Rotation:[180f,0f]}
+srv setblock 309 120 1 mekanism:basic_fluid_tank
+srv setblock 307 120 1 mekanism:basic_fluid_tank
+srv tp Dev 308.5 120 2.5 0 10
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 60
+bloco inicio 300 120 3
+espera 100
+volume_se_ok neutral players blocks ui
+espera 40
+espera 50
+espera 50
+anf clique_entidade minecraft:cow
+espera 50
+anf clique_entidade minecraft:cow
+espera 50
+anf clique_entidade minecraft:cow
+espera 50
+anf clique_bloco 309.5 120.5 1.9
+espera 50
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+anf clique_bloco 307.5 120.5 1.9
+espera 20
+anf ler tela_video
+espera 60
+anf fechar
+espera 60
+mudo
+# Os jogadores voltam ao chão da caixa antes de o vidro sair (sem isso o jogador salvo em y = 120 cai e morre ao reabrir o mundo).
+srv tp Dev 308.5 -60.0 0.5 0 0
+espera 20
+srv fill 300 119 -6 312 123 10 minecraft:air
+srv kill @e[type=minecraft:cow]
+srv kill @e[type=minecraft:item]
+srv clear @a
+srv gamerule advance_time true
+srv gamerule advance_weather true
+fim

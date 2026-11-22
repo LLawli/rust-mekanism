@@ -217,7 +217,12 @@ def act_client(who_name, a):
             if not lista:
                 say(f"{verb} {who_name} {a[1]} -> sem entidade")
                 return
-            who("look-at", "entity", str(lista[0]["id"]))
+            # O bicho mais perto, como o `CenaDois` (`distanceToSqr`): o `entities` lista na ordem do nível, não na da distância (na 12.ª rodada o anfitrião mirou a
+            # vaca de longe, fora do alcance, e o clique caiu no `use` do item).
+            perto = min(lista, key=lambda e: e.get("distance", 1e9))
+            mira = who("look-at", "entity", str(perto["id"]))
+            # O que a mira de verdade acerta (`target.kind`): o `CenaDois` põe o `EntityHitResult` à mão, e aqui um bloco no meio do caminho toma o clique.
+            say(f"mira {who_name} -> {mira.strip()[:200]}")
         elif verb == "clique_bloco":
             who("look-at", *a[1:4])
         else:
