@@ -65,12 +65,17 @@ import net.neoforged.neoforge.transfer.item.ItemResource;
 ///   congela | descongela          `tick freeze` | `tick unfreeze`
 ///   espera N                      N ticks do cliente
 ///   fim                           fecha o jogo
+///   teste NOME COMANDO...         o número que o comando devolve no servidor (um `execute if ...`), na linha `teste NOME -> N` do log
 ///
 /// Ações de cliente (nas duas pontas): `abrir X Y Z` (o `useItemOn` do clique direito), `fechar`, `foto NOME` (`oficial_dois_NOME.png`), `clicar X Y [d]` (pixels de GUI
 /// relativos à tela; `d` é o botão direito), `cursor X Y`, `escala N`, `ler NOME` (o estado do cliente em uma linha JSON no log e na resposta), `observar N NOME` (uma
 /// linha `ler` por tick durante N ticks, e com `X Y Z` o tile do mundo do cliente em vez do da tela), `slot N BOTAO` (`handleContainerInput`), `tipos` (os tipos
 /// de upgrade do registro que o cliente tem), `tile NOME X Y Z` (o tile do mundo do cliente: aceso, fator de volume, silenciado), `digitar TEXTO` (um `charTyped` por
 /// caractere), `tecla NOME` (`keyPressed`: enter, tab, backspace, escape, space, e), `roda X Y N` (a roda do mouse no ponto) e `painel L A` (só o port o usa).
+///
+/// Da frente `tanques` (12.ª rodada): `clique_entidade TIPO`, `clique_bloco X Y Z` e `clique_ar` fazem o clique direito inteiro do cliente (`Minecraft.startUseItem`,
+/// com a previsão, o balanço da mão e os pacotes) com a mira no bicho mais perto do tipo, no ponto (pela mira de verdade, `Entity.pick` sem fluidos) ou para cima, e
+/// devolvem se a mão balançou e o item da mão depois.
 ///
 /// Do anfitrião, para a Security Desk (frente `mesa-seguranca`): `por JOGADOR ITEM X` (o jogador põe o bloco e fica o dono) e `freq NOME` (a tabela das frequências de
 /// segurança na memória e no disco).
@@ -291,6 +296,50 @@ public class CenaDois {
                 }
                 return out.append("]").toString();
             }
+            case "clique_entidade", "clique_bloco", "clique_ar" -> {
+                // O clique direito inteiro do cliente (`Minecraft.startUseItem`, privado: a previsão, o balanço da mão e os pacotes), com a mira posta no bicho mais perto do
+                // tipo (`clique_entidade TIPO`), na face de um bloco (`clique_bloco X Y Z FACE`) ou em nada (`clique_ar`). Devolve se a mão balançou neste clique (o
+                // `LivingEntity.swing` liga o `swingState`) e o item da mão depois.
+                var player = minecraft.player;
+                if (a[0].equals("clique_entidade")) {
+                    var type = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.parse(a[1]));
+                    net.minecraft.world.entity.Entity best = null;
+                    for (var entity : minecraft.level.entitiesForRendering()) {
+                        if (entity.getType() == type && (best == null || entity.distanceToSqr(player) < best.distanceToSqr(player))) {
+                            best = entity;
+                        }
+                    }
+                    if (best == null) {
+                        return "\"sem entidade\"";
+                    }
+                    Vec3 centre = best.getBoundingBox().getCenter();
+                    player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, centre);
+                    minecraft.hitResult = new net.minecraft.world.phys.EntityHitResult(best, centre);
+                    minecraft.crosshairPickEntity = best;
+                } else {
+                    // `clique_bloco X Y Z`: o olhar no ponto e a mira de verdade (`Entity.pick`, sem fluidos, como a do jogo); `clique_ar`: o olhar para cima.
+                    Vec3 at = a[0].equals("clique_bloco") ? new Vec3(Double.parseDouble(a[1]), Double.parseDouble(a[2]), Double.parseDouble(a[3]))
+                          : player.getEyePosition().add(0, 10, 0);
+                    player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, at);
+                    minecraft.hitResult = player.pick(player.blockInteractionRange(), 1.0F, false);
+                    minecraft.crosshairPickEntity = null;
+                }
+                // Os cliques do roteiro ficam 20 ticks um do outro (o balanço dura 6): antes do clique a mão está parada.
+                boolean swingingBefore = player.isSwinging();
+                try {
+                    Method start = Minecraft.class.getDeclaredMethod("startUseItem");
+                    start.setAccessible(true);
+                    start.invoke(minecraft);
+                } catch (ReflectiveOperationException e) {
+                    Mekanism.logger.error("dois: startUseItem", e);
+                    return "\"erro\"";
+                }
+                boolean swung = !swingingBefore && player.isSwinging();
+                ItemStack held = player.getMainHandItem();
+                String hand = BuiltInRegistries.ITEM.getKey(held.getItem()) + " " + held.getCount() + " " + held.getComponentsPatch();
+                log(a[0] + " " + String.join(" ", java.util.Arrays.copyOfRange(a, 1, a.length)) + " -> balancou " + swung + " mao " + hand);
+                return "{\"balancou\":" + swung + ",\"mao\":\"" + hand.replace("\\", "\\\\").replace("\"", "'") + "\"}";
+            }
             default -> {
                 return "\"acao desconhecida " + a[0] + "\"";
             }
@@ -448,6 +497,19 @@ public class CenaDois {
                 } else {
                     log("convidado entrou: " + server.getPlayerList().getPlayers().stream().map(p -> p.getName().getString()).toList());
                 }
+            }
+            case "teste" -> {
+                // `teste NOME COMANDO...`: o resultado do comando no servidor (o número que um `execute if ...` devolve), numa linha do log.
+                String comando = String.join(" ", java.util.Arrays.copyOfRange(a, 2, a.length));
+                server.execute(() -> {
+                    int result;
+                    try {
+                        result = server.getCommands().getDispatcher().execute(comando, server.createCommandSourceStack().withSuppressedOutput());
+                    } catch (Exception e) {
+                        result = -1;
+                    }
+                    log("teste " + a[1] + " -> " + result);
+                });
             }
             case "srv" -> {
                 String comando = String.join(" ", java.util.Arrays.copyOfRange(a, 1, a.length));

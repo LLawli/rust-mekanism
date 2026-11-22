@@ -8,7 +8,7 @@ O que o original grava como linha `ler`/`tile` (o XP do convidado, o fator de vo
 pelas linhas `MEKSOUND` do log do cliente convidado (`~/.cache/rust-mekanism/dois-clientes/b.log`, só numa cópia de teste com `TRACE = true` em `tile_sound.rs`).
 
 Ações que o roteiro conhece (as do cabeçalho de `CenaDois.java`): lan, espera_convidado, srv, congela, descongela, passos, espera, caixa, montar, estado, silencio, liga, desliga, anf/conv
-(abrir, fechar, foto, escala, clicar, cursor, ler, observar, tile), fim. O anfitrião do original se chama `Dev`; o do port, `Player90366`."""
+(abrir, fechar, foto, escala, clicar, cursor, ler, observar, tile, e, da 12.ª rodada dos tanques, clique_entidade, clique_bloco, clique_ar e luz), teste, fim. O anfitrião do original se chama `Dev`; o do port, `Player90366`."""
 import json, math, os, re, subprocess, sys, time
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
@@ -201,6 +201,46 @@ def act_client(who_name, a):
         say(f"tile {a[1]} (o port só tem o fator nas linhas MEKSOUND do `observar`)")
     elif verb == "tipos":
         say("tipos: o cliente do port não expõe o registro; veja a janela de upgrades (foto)")
+    elif verb == "luz":
+        # A luz guardada no mundo do cliente em volta de (X, Y, Z), por `horizon-ctl light` (o original não a expõe: lá a comparação é pelo print).
+        x, y, z = (int(v) for v in a[1:4])
+        say(f"luz {who_name} {' '.join(a[1:4])}: {who('light', str(x - 3), str(y), str(z), str(x + 3), str(y + 1), str(z)).strip()[:900]}")
+    elif verb in ("clique_entidade", "clique_bloco", "clique_ar"):
+        # O clique direito do jogador (`use-item`) com a mira no bicho mais perto do tipo, na face de um bloco ou em nada, como o `startUseItem` da `CenaDois`:
+        # a mão balançou se o contador `swings` do `status` andou.
+        if verb == "clique_entidade":
+            try:
+                mobs = json.loads(who("entities", "8", a[1].split(":")[-1]))
+            except json.JSONDecodeError:
+                mobs = []
+            lista = mobs.get("entities", []) if isinstance(mobs, dict) else mobs
+            if not lista:
+                say(f"{verb} {who_name} {a[1]} -> sem entidade")
+                return
+            who("look-at", "entity", str(lista[0]["id"]))
+        elif verb == "clique_bloco":
+            who("look-at", *a[1:4])
+        else:
+            who("look", "0", "-90")
+        time.sleep(0.3)
+        antes = swings(who)
+        who("use-item")
+        time.sleep(0.4)
+        depois = swings(who)
+        try:
+            mao = json.loads(who("state")).get("held")
+        except json.JSONDecodeError:
+            mao = "?"
+        say(f"{verb} {who_name} {' '.join(a[1:])} -> balancou {depois != antes} ({antes} -> {depois}) mao {json.dumps(mao)[:300]}")
+
+
+def swings(who):
+    """O contador de balanços da mão do cliente (`swings_started`, no `status` ou no `state` do `horizon-ctl`)."""
+    for command in ("status", "state"):
+        found = re.search(r'"swings"\s*:\s*(\d+)', who(command))
+        if found:
+            return int(found.group(1))
+    return None
 
 
 def end_observation():
@@ -234,6 +274,12 @@ def main():
         say(f"> {line.strip()}")
         verb = a[0]
         if verb in ("lan", "espera_convidado"):
+            continue
+        if verb == "teste":
+            # `teste NOME COMANDO...`: o resultado de um `execute if ...` (a contagem do `Test passed`, 0 no `Test failed`), como a linha `teste` da `CenaDois`.
+            chat = " ".join(str(m) for m in hcmd(" ".join(a[2:])))
+            found = re.search(r"Test passed(?:[.,] [Cc]ount: (\d+))?", chat)
+            say(f"teste {a[1]} -> {(found.group(1) or '1') if found else 0} ({chat[:160]})")
             continue
         if verb == "srv":
             hcmd(" ".join(a[1:]))

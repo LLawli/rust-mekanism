@@ -1,0 +1,132 @@
+# Tanques, 12.ª rodada: o clique direito inteiro do cliente (`Minecraft.startUseItem` no original, `use-item` no port) com o item do Fluid Tank no modo balde, no convidado de LAN
+# e no anfitrião: a ordenha (a posse, o leite, o tanque cheio), o balde na fonte, o caldeirão e o tanque reposto pelo jogador com lava, e se a mão balança em cada clique.
+# Os dois avanços (`player_interacted_with_entity` e `item_used_on_block`) se leem pelo data pack `tanq12` do mundo (`cenas/tanq12_pack/`). Em sobrevivência: no criativo a
+# posse tomada numa entidade se perde (a pilha é uma cópia).
+lan 25599
+espera_convidado
+descongela
+srv gamemode survival @a
+srv difficulty peaceful
+srv clear @a
+caixa 306
+srv datapack enable "file/tanq12"
+srv kill @e[type=minecraft:cow]
+srv setblock 304 -61 2 minecraft:water
+srv setblock 308 -61 2 minecraft:water
+srv setblock 305 -60 1 minecraft:cauldron
+srv setblock 309 -60 1 minecraft:cauldron
+srv summon minecraft:cow 302.5 -60 2.5 {NoAI:1b}
+srv summon minecraft:cow 310.5 -60 2.5 {NoAI:1b}
+srv tp Convidado 304.5 -60.0 0.5 0 0
+srv tp Dev 308.5 -60.0 0.5 0 0
+srv advancement revoke @a only tanq12:ordenha
+srv advancement revoke @a only tanq12:caldeirao
+espera 60
+teste pack_ordenha execute if entity @a[name=Convidado,advancements={tanq12:ordenha=false}]
+# O convidado.
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+conv clique_entidade minecraft:cow
+espera 20
+conv clique_entidade minecraft:cow
+espera 20
+teste ordenha_convidado execute if entity @a[name=Convidado,advancements={tanq12:ordenha=true}]
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true,mekanism:fluids={containers:[{amount:32000L,type:{id:"minecraft:milk"}}]}]
+espera 20
+conv clique_entidade minecraft:cow
+espera 20
+conv clique_entidade minecraft:cow
+espera 20
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+conv clique_ar
+espera 20
+conv clique_bloco 304.5 -60.1 2.5
+espera 20
+teste fonte_convidado execute if block 304 -61 2 minecraft:water
+conv clique_bloco 305.5 -59.7 1.5
+espera 20
+teste caldeirao_convidado execute if block 305 -60 1 minecraft:water_cauldron
+teste avanco_caldeirao_convidado execute if entity @a[name=Convidado,advancements={tanq12:caldeirao=true}]
+# O tanque reposto pelo convidado, com lava: o bloco posto pelo clique no chão leva o fluido do item, e acende o mundo do cliente.
+srv item replace entity Convidado weapon.mainhand with mekanism:basic_fluid_tank[mekanism:fluids={containers:[{amount:32000L,type:{id:"minecraft:lava"}}]}]
+espera 20
+conv clique_bloco 303.5 -60.0 4.5
+espera 40
+nbt tanque_convidado 303 -60 4
+conv luz 303 -60 4
+conv foto tanque_lava
+# O anfitrião.
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+anf clique_entidade minecraft:cow
+espera 20
+anf clique_entidade minecraft:cow
+espera 20
+teste ordenha_anfitriao execute if entity @a[name=Dev,advancements={tanq12:ordenha=true}]
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true,mekanism:fluids={containers:[{amount:32000L,type:{id:"minecraft:milk"}}]}]
+espera 20
+anf clique_entidade minecraft:cow
+espera 20
+anf clique_entidade minecraft:cow
+espera 20
+srv item replace entity Dev weapon.mainhand with mekanism:basic_fluid_tank[mekanism:bucket_mode=true]
+espera 20
+anf clique_ar
+espera 20
+anf clique_bloco 308.5 -60.1 2.5
+espera 20
+teste fonte_anfitriao execute if block 308 -61 2 minecraft:water
+anf clique_bloco 309.5 -59.7 1.5
+espera 20
+teste caldeirao_anfitriao execute if block 309 -60 1 minecraft:water_cauldron
+teste avanco_caldeirao_anfitriao execute if entity @a[name=Dev,advancements={tanq12:caldeirao=true}]
+anf luz 303 -60 4
+anf foto tanque_lava
+# O monstro ao lado do tanque de lava: o tanque só acende o mundo do cliente, e o gerador de monstros pergunta a luz ao mundo do servidor (0). Os jogadores em criativo,
+# o gerador a 2 blocos do tanque, a caixa fechada e escura.
+srv gamemode creative @a
+srv difficulty easy
+srv setblock 304 -60 6 minecraft:spawner{SpawnData:{entity:{id:"minecraft:zombie"}},Delay:0s,MinSpawnDelay:20s,MaxSpawnDelay:40s,SpawnCount:4s,RequiredPlayerRange:32s}
+espera 300
+teste zumbis execute if entity @e[type=minecraft:zombie]
+teste luz_servidor_ao_lado execute positioned 304 -60 4 if predicate {type:"minecraft:location_check",predicate:{light:{light:{min:1,max:15}}}}
+srv setblock 304 -60 6 minecraft:air
+srv kill @e[type=minecraft:zombie]
+srv difficulty peaceful
+srv gamemode survival @a
+# A limpeza: nada de fonte nem de bicho no mundo do original.
+srv setblock 303 -60 4 minecraft:air
+srv fill 304 -60 1 309 -60 2 minecraft:air
+srv setblock 304 -61 2 minecraft:black_concrete
+srv setblock 308 -61 2 minecraft:black_concrete
+srv kill @e[type=minecraft:cow]
+srv kill @e[type=minecraft:item]
+srv clear @a
+srv advancement revoke @a only tanq12:ordenha
+srv advancement revoke @a only tanq12:caldeirao
+# A máquina com experiência guardada destruída pelo nível (`setblock ... destroy`): o original solta as bolas no `preRemoveSideEffects` do tile
+# (`TileEntityRecipeMachine.java:101-107`), qualquer que seja quem tira o bloco. O servidor parado: as bolas não andam até o jogador antes da contagem.
+congela
+montar chamber 302
+estado 302 upgrades=speed:8,xp_containment:1
+passos 1
+estado 302 entrada=coal:8
+estado 302 energia=10000
+passos 30
+estado 302 energia=10000
+passos 30
+estado 302 energia=10000
+passos 30
+estado 302 energia=10000
+passos 30
+nbt camara 302 -60 3
+srv setblock 302 -60 3 minecraft:air destroy
+passos 1
+teste orbes_camara execute if entity @e[type=minecraft:experience_orb]
+itens camara 302 -60 3
+srv kill @e[type=minecraft:experience_orb]
+srv kill @e[type=minecraft:item]
+descongela
+srv datapack disable "file/tanq12"
+fim

@@ -1,0 +1,20 @@
+{
+  "criteria": {
+    "caldeirao": {
+      "trigger": "minecraft:item_used_on_block",
+      "conditions": {
+        "location": {
+          "type": "minecraft:match_tool",
+          "predicate": {
+            "items": "mekanism:basic_fluid_tank"
+          }
+        }
+      }
+    }
+  },
+  "requirements": [
+    [
+      "caldeirao"
+    ]
+  ]
+}
