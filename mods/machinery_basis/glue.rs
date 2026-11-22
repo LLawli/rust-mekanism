@@ -876,6 +876,64 @@ pub(in crate::game) fn index_lighting_states(game: &Game<'_>) {
     horizon_client::mesher::machinery_enhanced::set(table);
 }
 
+/// Os blocos cuja emissão de luz pergunta a posição (`IBlockExtension.getLightEmission(state, level, pos)`): quem os registra é o mod, uma vez.
+static POSITION_LIGHT_BLOCKS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// A carga de dados (`DATA_GENERATION` mais um) para a qual a tabela de estados de `machinery_light` foi feita; zero antes da primeira.
+static POSITION_LIGHT_INDEXED: AtomicU64 = AtomicU64::new(0);
+
+/// O mod diz que a emissão de luz destes blocos depende da block entity. A emissão de cada posição é a do tile do cliente (`machinery_tile_sound::tank_light_client_tick`).
+pub(in crate::game) fn position_light_blocks(blocks: &[&str]) {
+    let mut known = POSITION_LIGHT_BLOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    for block in blocks {
+        if !known.iter().any(|name| name == block) {
+            known.push((*block).to_owned());
+            POSITION_LIGHT_INDEXED.store(0, Ordering::Release);
+        }
+    }
+}
+
+/// A tabela dos estados que perguntam a posição ao motor de luz (`position_light.rs`). Refeita a cada carga de dados e quando um mod registra um bloco.
+pub(in crate::game) fn index_position_light_states(game: &Game<'_>) {
+    let known = POSITION_LIGHT_BLOCKS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let registry = game.pack.assets.registry;
+    let table: Vec<bool> = (0..registry.len())
+        .map(|index| registry.state(BlockStateId(index as u32)).is_some_and(|state| known.iter().any(|name| name.as_str() == &*state.name)))
+        .collect();
+    horizon_client::light::machinery_light::set_states(table);
+    POSITION_LIGHT_INDEXED.store(DATA_GENERATION.load(Ordering::Acquire) + 1, Ordering::Release);
+}
+
+/// A tabela de estados em dia com a carga de dados e com os blocos registrados (o cliente de um servidor não passa pelo gancho de carga de dados).
+pub(in crate::game) fn position_light_index(game: &Game<'_>) {
+    if POSITION_LIGHT_INDEXED.load(Ordering::Acquire) != DATA_GENERATION.load(Ordering::Acquire) + 1 {
+        index_position_light_states(game);
+    }
+}
+
+/// A thread deste `Game` é a do cliente e ele está neste nível: só o mundo do cliente lê a emissão por posição (no original a block entity não responde ao motor de luz do
+/// servidor, `Level.java:665-673`). Quem tem tiles de cliente chama isto a cada tick dele, antes de escrever a emissão deles em `machinery_light::set`.
+pub(in crate::game) fn position_light_client(game: &Game<'_>) {
+    horizon_client::light::machinery_light::mark_client_thread();
+    horizon_client::light::machinery_light::set_client_level(game.native_dimension());
+}
+
+/// `level.getLightEngine().checkBlock(pos)`: a luz de `pos` é refeita na próxima passada de luz. O pedido entra como a troca do estado por ele mesmo na fila de edições que o
+/// `World::set_block` do Horizon enche (`light_edits` num chunk já iluminado, senão o 3x3 em `dirty_light`), e a injeção `position_light_differs` o deixa passar.
+pub(in crate::game) fn position_light_check(game: &mut Game<'_>, pos: [i32; 3]) {
+    position_light_index(game);
+    let (x, y, z) = (pos[0], pos[1], pos[2]);
+    let state = game.world.block(x, y, z);
+    if game.world.chunks.get(&(x >> 4, z >> 4)).is_some_and(|chunk| chunk.lit) {
+        game.world.light_edits.push(((x, y, z), state.0, state.0));
+    } else {
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                game.world.dirty_light.insert(((x >> 4) + dx, (z >> 4) + dz));
+            }
+        }
+    }
+}
+
 /// Se a entrada de chave de componentes `patch_key` passa no ingrediente `tree`: o patch dela é o que `PATCHES` guarda para a chave.
 pub(in crate::game) fn tree_accepts(tree: &Tree, item: &str, patch_key: Option<&str>) -> bool {
     let patch = patch_key

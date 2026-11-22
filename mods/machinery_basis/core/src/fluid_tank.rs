@@ -297,6 +297,8 @@ pub struct FluidTankTile {
     needs_packet: Rc<Cell<bool>>,
     prev_scale: f32,
     light_update_delay: i32,
+    /// `lastLightLevel`: a emissão do bloco no último `checkLight` que a leu. Não é salva: um tile lido do disco volta a 0.
+    last_light_level: i32,
     deactivation_delay: i32,
     rate: i32,
     game_time: Rc<Cell<u64>>,
@@ -366,6 +368,7 @@ impl FluidTankTile {
             needs_packet,
             prev_scale: 0.0,
             light_update_delay: 0,
+            last_light_level: 0,
             deactivation_delay: config.deactivation_delay,
             rate: config.rate,
             game_time,
@@ -416,6 +419,21 @@ impl FluidTankTile {
 
     pub fn set_light_update_delay(&mut self, delay: i32) {
         self.light_update_delay = delay;
+    }
+
+    /// O fim de `checkLight` (`TileEntityFluidTank.java:142-146`), para quando o tick avisa [`TickResult::check_light`]: `emission` é o
+    /// `getBlockState().getLightEmission(level, worldPosition)` de agora. Devolve se o tile pede `checkBlock`, que é quando ela difere da última lida.
+    pub fn light_checked(&mut self, emission: i32) -> bool {
+        if emission != self.last_light_level {
+            self.last_light_level = emission;
+            return true;
+        }
+        false
+    }
+
+    /// `lastLightLevel`.
+    pub fn last_light_level(&self) -> i32 {
+        self.last_light_level
     }
 
     /// `getValveFluid`.
@@ -593,6 +611,61 @@ impl FluidTankTile {
             comparator_changed,
             check_light,
         }
+    }
+}
+
+/// `BlockFluidTank.getLightEmission` (`BlockFluidTank.java:33-45`): a luz do estado, e, abaixo de 15 (`Level.MAX_BRIGHTNESS`) e com o tanque do tile com fluido, o maior entre
+/// ela e o `getLightLevel` do tipo do fluido. `fluid_light` é `None` sem tile ou com o tanque vazio.
+pub fn block_light_emission(state_light: i32, fluid_light: Option<i32>) -> i32 {
+    const MAX_BRIGHTNESS: i32 = 15;
+    if state_light == MAX_BRIGHTNESS {
+        return state_light;
+    }
+    match fluid_light {
+        Some(fluid) => state_light.max(fluid),
+        None => state_light,
+    }
+}
+
+/// O lado do cliente da luz de `TileEntityFluidTank`: o `prevScale`, o `lightUpdateDelay` e o `lastLightLevel` que o tile do cliente guarda. Um tile novo começa em zero.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ClientLight {
+    prev_scale: f32,
+    delay: i32,
+    last_light_level: i32,
+}
+
+impl ClientLight {
+    /// `handleUpdateTag` (`TileEntityFluidTank.java:329-343`): com o atraso parado e a escala mudada de zero ou para zero, a luz é conferida no próximo tick do
+    /// cliente (o tanque deixou de estar vazio) ou `blockDeactivationDelay` ticks depois (esvaziou).
+    pub fn update_tag(&mut self, scale: f32, deactivation_delay: i32) {
+        if self.delay == 0
+            && scale_changed(self.prev_scale, scale)
+            && (self.prev_scale == 0.0 || scale == 0.0)
+        {
+            self.delay = if self.prev_scale == 0.0 {
+                1
+            } else {
+                deactivation_delay
+            };
+        }
+        self.prev_scale = scale;
+    }
+
+    /// `onUpdateClient` -> `checkLight` (`:138-149`): `emission` é o `getLightEmission` de agora. Devolve se o tile pede `checkBlock`.
+    pub fn tick(&mut self, emission: i32) -> bool {
+        if self.delay > 0 {
+            self.delay -= 1;
+            if self.delay == 0 && emission != self.last_light_level {
+                self.last_light_level = emission;
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn delay(&self) -> i32 {
+        self.delay
     }
 }
 

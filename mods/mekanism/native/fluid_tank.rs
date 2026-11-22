@@ -618,6 +618,44 @@ fn live_at(key: &Key) -> Option<Rc<RefCell<LiveTank>>> {
 // ---------------------------------------------------------------------------------------------------------------------------
 // O tick.
 
+/// `BlockFluidTank.getLightEmission` para o tile: o estado do tanque não emite (o bloco não tem `AttributeStateActive` com luz), e o fluido guardado dá o
+/// `FluidType.getLightLevel` dele (a lava 15).
+fn light_emission(tile: &FluidTankTile) -> i32 {
+    fluid_tank::block_light_emission(0, tile.tank().resource().map(|fluid| fluid_light(&fluid.id.to_string())))
+}
+
+/// `checkLight` no servidor (`TileEntityFluidTank.java:138-149`): `checked` é a emissão que ele leu quando o atraso chegou a zero, no começo do tick, e o tile guarda o
+/// `lastLightLevel`. O `checkBlock` que o original pede aqui não muda nada: o motor de luz do servidor roda fora da thread do nível, onde `Level.getBlockEntity` devolve `null`
+/// (`Level.java:665-673`), `BlockFluidTank.getLightEmission` não acha o tile e a emissão é a do estado, zero. A luz do fluido só existe no mundo do cliente
+/// ([`client_light_tick`]); no do servidor um monstro nasce ao lado de um tanque de lava. Medido nos dois jogos na 11.ª rodada da frente `tanques`.
+fn light_publish(tile: &mut FluidTankTile, checked: Option<i32>) {
+    if let Some(emission) = checked {
+        tile.light_checked(emission);
+    }
+}
+
+static LIGHT_BLOCKS: std::sync::Once = std::sync::Once::new();
+
+/// `FluidType.getLightLevel` do fluido `id`.
+fn fluid_light(id: &str) -> i32 {
+    glue::contents_fluid(id).map_or(0, |look| look.light.min(15) as i32)
+}
+
+/// O que a `machinery_basis` precisa saber dos Fluid Tanks para a luz: os blocos cuja emissão depende do tile, a luz de cada fluido e o `blockDeactivationDelay`.
+fn light_register() {
+    LIGHT_BLOCKS.call_once(|| {
+        basis::position_light_blocks(&rules::FLUID_TANK_TIERS);
+        crate::game::machinery_tile_sound::tank_light_register(fluid_light, rules::block_deactivation_delay_now);
+    });
+}
+
+/// `TileEntityFluidTank.onUpdateClient`: o tile do cliente confere a luz dele.
+pub(in crate::game) fn client_light_tick(game: &mut Game<'_>) {
+    light_register();
+    basis::position_light_index(game);
+    crate::game::machinery_tile_sound::tank_light_client_tick(game);
+}
+
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     let Some(tier) = tier_of(&entity.id) else {
         return;
@@ -699,10 +737,13 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         (None, Some(other)) => Some(other as &dyn BelowHandler),
         (None, None) => None,
     };
+    // `checkLight` roda no começo de `onUpdateServer`: a emissão que ele lê é a de antes de o tick mexer no tanque.
+    let light_before = light_emission(&live.tile);
     let result = live.tile.tick_server(now as u64, handler);
     if let Some(other) = &below_other {
         crate::game::machinery_resources::fluid_push_flush(game, dimension, below_pos, &other.0);
     }
+    light_publish(&mut live.tile, result.check_light.then_some(light_before));
     glue::publish_comparator(game, dimension, pos, live.tile.tile().current_redstone_level(), result.comparator_changed);
     // `sendUpdatePacket(this)`: o `getReducedUpdateTag` (a escala, o fluido e o fluido da válvula) vai ao cliente quando o tile pede. Um tile que acabou de nascer manda o
     // dele, como o pacote do bloco de entidade que o cliente recebe com o chunk e com o bloco posto.

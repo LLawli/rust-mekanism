@@ -1667,3 +1667,74 @@ bindings = [
   { name = "vertices", ty = "&std::ops::Range<u32>", value = "&vertices" },
   { name = "timing", ty = "&mut Option<&mut crate::gfx::pack_timing::PassTiming>", value = "&mut timing" },
 ]
+
+# ---- a emissão de luz de um bloco por posição (`IBlockExtension.getLightEmission(state, level, pos)`; decisão 274, opção A; H283) ----
+# O motor de luz do Horizon (`horizon-client-render/src/light.rs`) lê a emissão de uma tabela por estado de bloco em três trechos em linha: a semente de
+# `light_chunk_with_scratch` e dois de `relight_layer` (o `checkNode` e as fontes da área limpa). Um bloco de mod pode emitir conforme a block entity (o Fluid Tank do
+# Mekanism com lava). O módulo `machinery_light` (código puro, `core/tests/position_light_module.rs`) guarda os estados que perguntam a posição e a emissão de cada posição,
+# partilhados entre o jogo e as threads de luz; o `machinery_light_engine` guarda as cópias das duas funções do pin `f319701` com a emissão por posição. Quatro alvos crus:
+# três HEAD canceláveis (`light_chunk` e `relight_layer` trocam o corpo pela cópia só no mundo do cliente e quando alguma posição emite, e `LightTables::differs` faz a troca de
+# um estado que pergunta a posição refazer a luz, que é também por onde chega o `checkBlock` pedido pelo tile do cliente) e o HEAD de `Streaming::submit`, que anota os trabalhos
+# de luz do `Streaming` do cliente. Só o mundo do cliente lê a posição: no original o motor de luz do servidor roda fora da thread do nível e não acha a block entity
+# (`Level.getBlockEntity`). As cópias têm de acompanhar o pin: ver `docs/injecoes-horizon.md`.
+[[module]]
+id = "position-light"
+file = "crates/horizon-client-render/src/light.rs"
+name = "machinery_light"
+source = "position_light.rs"
+visibility = "pub"
+
+[[module]]
+id = "position-light-engine"
+file = "crates/horizon-client-render/src/light.rs"
+name = "machinery_light_engine"
+source = "position_light_engine.rs"
+visibility = "pub"
+
+[[injection]]
+id = "position_light_chunk"
+target = "horizon_client_render::light::light_chunk"
+kind = "HEAD"
+cancellable = true
+helper = "position_light_chunk.rs"
+bindings = [
+  { name = "region", ty = "&[[Option<&Chunk>; 3]; 3]", value = "region" },
+  { name = "tables", ty = "&LightTables", value = "tables" },
+  { name = "sky_light", ty = "bool", value = "sky_light" },
+]
+
+[[injection]]
+id = "position_relight_layer"
+target = "horizon_client_render::light::relight_layer"
+kind = "HEAD"
+cancellable = true
+helper = "position_relight_layer.rs"
+bindings = [
+  { name = "world", ty = "&mut Region<'_>", value = "&mut *world" },
+  { name = "tables", ty = "&LightTables", value = "tables" },
+  { name = "sky", ty = "bool", value = "sky" },
+  { name = "seeds", ty = "&[Pos]", value = "&seeds" },
+  { name = "force", ty = "bool", value = "force" },
+  { name = "changed", ty = "&mut LightChanges", value = "&mut *changed" },
+]
+
+[[injection]]
+id = "position_light_differs"
+target = "horizon_client_render::light::LightTables::differs"
+kind = "HEAD"
+cancellable = true
+helper = "position_light_differs.rs"
+bindings = [
+  { name = "old", ty = "u32", value = "old" },
+  { name = "new", ty = "u32", value = "new" },
+]
+
+[[injection]]
+id = "position_light_submit"
+target = "horizon_client_render::streaming::Streaming::submit"
+kind = "HEAD"
+helper = "position_light_submit.rs"
+bindings = [
+  { name = "streaming", ty = "&Streaming", value = "&*self" },
+  { name = "job", ty = "&Job", value = "&job" },
+]

@@ -554,6 +554,58 @@ fn the_light_delay_follows_the_original() {
     replay("light");
 }
 
+/// O fim de `checkLight` (`TileEntityFluidTank.java:141-146`) sobre o cenário do rastro `tank_fluid_light`: o `checkBlock` sai no tick em que o atraso chega a zero, e só
+/// quando a emissão (`BlockFluidTank.getLightEmission`: a lava dá 15) difere da última lida. Os ticks em que o atraso chega a zero e o fluido de cada um são os do rastro.
+#[test]
+fn the_light_check_asks_for_the_block_only_when_the_emission_changed() {
+    use machinery_basis_core::fluid_tank::block_light_emission;
+    let lines = read("tank_fluid_light.jsonl");
+    let column = Column::new(lines[0]["meta"]["tanks"].as_array().unwrap());
+    let tile = column.tiles[0].as_ref().unwrap();
+    let light_of = |fluid: &str| match fluid {
+        "" => None,
+        "minecraft:lava" => Some(15),
+        _ => Some(0),
+    };
+    let mut delay = 0;
+    let mut zeroed = Vec::new();
+    let mut asked = Vec::new();
+    for line in &lines[1..] {
+        let t = line["t"].as_i64().unwrap();
+        let recorded = &line["tanks"][0];
+        let now = recorded["light"].as_i64().unwrap();
+        if delay > 0 && now == 0 {
+            // O `checkLight` roda antes de o tick mexer no tanque: o fluido lido é o do fim do tick anterior, que só difere do deste tick num tick com marca.
+            assert!(
+                line["marks"].as_array().unwrap().is_empty(),
+                "{t}: o atraso zera num tick sem ação"
+            );
+            let emission = block_light_emission(0, light_of(recorded["fluid"].as_str().unwrap()));
+            zeroed.push((t, emission));
+            if tile.borrow_mut().light_checked(emission) {
+                asked.push((t, emission));
+            }
+        }
+        delay = now;
+    }
+    // A lava entra no 5 e o atraso zera no 6, com 15 de emissão contra 0: o tile pede o `checkBlock`. Esvaziado no 20, a escala desce aos poucos e só chega a zero
+    // depois do 40: o atraso de 60 ainda corre no fim do rastro (16 no tick 90), e a luz segue acesa até lá.
+    assert_eq!(zeroed, vec![(6, 15)]);
+    assert_eq!(asked, vec![(6, 15)]);
+    assert_eq!(tile.borrow().last_light_level(), 15);
+    // O mesmo valor de novo não pede nada; o tanque vazio (0 contra 15) pede.
+    assert!(!tile.borrow_mut().light_checked(15));
+    assert!(
+        tile.borrow_mut()
+            .light_checked(block_light_emission(0, None))
+    );
+    assert!(
+        !tile
+            .borrow_mut()
+            .light_checked(block_light_emission(0, Some(0)))
+    );
+}
+
 /// `BlockFluidTank.useItemOn` -> `FluidUtil.interactWithFluidHandler`: primeiro o tanque enche o item da mão, e só se nada passou o item
 /// esvazia no tanque. Sem rastro: confere a ordem lida no NeoForge (`FluidUtil.java`, `ResourceHandlerUtil.moveFirst`).
 #[test]

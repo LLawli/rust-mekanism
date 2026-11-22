@@ -124,6 +124,71 @@ pub(in crate::game) fn tank_view_from_server(channel: &str, data: &[u8]) -> bool
     true
 }
 
+/// O lado do cliente da luz de um tanque de fluido (`TileEntityFluidTank.handleUpdateTag` e `onUpdateClient` -> `checkLight`): cada mundo ilumina a si mesmo, e o servidor só
+/// manda a luz dos chunks da borda (`ChunkHolder.broadcastChanges`), então o tile do cliente confere a luz dele quando a escala que chegou sai de zero ou chega a zero. É o
+/// único lado em que a luz do fluido aparece: no servidor do original o motor de luz não acha o tile (`Level.getBlockEntity` fora da thread do nível).
+static TANK_LIGHTS: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), machinery_basis_core::fluid_tank::ClientLight>>> = std::sync::Mutex::new(None);
+/// O que o mod diz uma vez: o `FluidType.getLightLevel` de um fluido e o `blockDeactivationDelay` de agora.
+static TANK_LIGHT_RULES: std::sync::Mutex<Option<(fn(&str) -> i32, fn() -> i32)>> = std::sync::Mutex::new(None);
+
+pub(in crate::game) fn tank_light_register(light_of: fn(&str) -> i32, deactivation_delay: fn() -> i32) {
+    *TANK_LIGHT_RULES.lock().unwrap_or_else(|error| error.into_inner()) = Some((light_of, deactivation_delay));
+}
+
+/// O tick do cliente para os tanques que ele conhece no nível em que está: a escala que mudou desde o último tick é o `handleUpdateTag`, e depois o `checkLight`. A emissão do
+/// tanque do cliente vai à tabela do motor de luz, que só o mundo do cliente lê.
+pub(in crate::game) fn tank_light_client_tick(game: &mut Game<'_>) {
+    use horizon_client::light::machinery_light;
+    if !game.options.execution_role.is_client() {
+        return;
+    }
+    let Some((light_of, deactivation_delay)) = *TANK_LIGHT_RULES.lock().unwrap_or_else(|error| error.into_inner()) else {
+        return;
+    };
+    // `Level.tickBlockEntities`: um nível parado (`tick freeze`) não tica os tiles, e o atraso da luz não anda; o pacote que chega com ele parado vale assim mesmo.
+    let running = game.clock.runs_normally();
+    let dimension = game.native_dimension();
+    crate::game::machinery_basis::position_light_client(game);
+    let level = dimension;
+    let views: Vec<([i32; 3], TankView)> = TANK_VIEWS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get_or_insert_with(HashMap::new)
+        .iter()
+        .filter(|((of, _), _)| of == dimension)
+        .map(|((_, pos), view)| (*pos, view.clone()))
+        .collect();
+    let mut checks = Vec::new();
+    {
+        let mut guard = TANK_LIGHTS.lock().unwrap_or_else(|error| error.into_inner());
+        let lights = guard.get_or_insert_with(HashMap::new);
+        for (pos, view) in views {
+            if !game.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4)) {
+                continue;
+            }
+            let at = (pos[0], pos[1], pos[2]);
+            let key = (dimension.to_owned(), pos);
+            // O bloco saiu: o tile do cliente saiu com ele, e `getLightEmission` volta à luz do estado.
+            if !machinery_light::positional(game.world.block(at.0, at.1, at.2).0) {
+                if lights.remove(&key).is_some() {
+                    machinery_light::set(level, at, 0);
+                }
+                continue;
+            }
+            let light = lights.entry(key).or_default();
+            light.update_tag(view.scale, deactivation_delay());
+            let emission = machinery_basis_core::fluid_tank::block_light_emission(0, view.fluid.as_deref().map(light_of));
+            machinery_light::set(level, at, emission as u8);
+            if running && light.tick(emission) {
+                checks.push(pos);
+            }
+        }
+    }
+    for pos in checks {
+        crate::game::machinery_basis::position_light_check(game, pos);
+    }
+}
+
 fn muffling_table<R>(f: impl FnOnce(&mut HashMap<(String, [i32; 3]), i32>) -> R) -> R {
     let mut guard = MUFFLING.lock().unwrap_or_else(|error| error.into_inner());
     f(guard.get_or_insert_with(HashMap::new))
